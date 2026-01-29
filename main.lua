@@ -9,6 +9,7 @@ local Serialize = require("core.board.serialize")
 
 
 local data = assert(Adapter.ingest("tests/data_format/input.txt"))
+local inspect_opts = { ignore_keys = '_tokens'}
 I.print(data)
 
 
