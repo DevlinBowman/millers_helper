@@ -71,4 +71,14 @@ function Normalize.json(result)
     }
 end
 
+
+-- ----------------------------
+-- Raw Text (lines) -> records
+-- ----------------------------
+
+function Normalize.lines(result)
+    local v = result.data
+    return 'placeholder'
+end
+
 return Normalize

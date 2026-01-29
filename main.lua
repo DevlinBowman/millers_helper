@@ -5,10 +5,10 @@ local Serialize = require("core.board.serialize")
 
 -- local result = assert(Adapter.ingest("tests/data_format/old_sheet.csv"))
 -- assert(result.kind == "boards")
+-- I.print(result)
 
 
 local data = assert(Adapter.ingest("tests/data_format/input.txt"))
-
 I.print(data)
 
 

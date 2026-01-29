@@ -50,6 +50,7 @@ function Reader.read(path, opts)
     if not result then
         return nil, err
     end
+    -- for _, l in pairs(result.data) do print(_,l) end
 
     -- ----------------------------
     -- Metadata enrichment (unchanged)
@@ -80,7 +81,10 @@ function Reader.read(path, opts)
     -- Optional normalization
     -- ----------------------------
     if opts.normalize then
-        if result.kind == "table" then
+        if result.kind == "lines" then
+            print('TEXT_FILE')
+            return
+        elseif result.kind == "table" then
             local norm = Normalize.table(result)
             norm.meta = result.meta
             return norm
