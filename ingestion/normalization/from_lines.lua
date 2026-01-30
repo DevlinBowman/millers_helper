@@ -10,7 +10,7 @@ local FromLines = {}
 function FromLines.run(lines)
     assert(lines.kind == "lines", "expected kind='lines'")
 
-    local records = TextParser.run(lines.data)
+    local records = TextParser.run(lines.data, {debug = false})
 
     assert(
         type(records) == "table" and records.kind == "records",

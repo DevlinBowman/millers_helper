@@ -14,14 +14,14 @@ Rules[#Rules + 1] = {
     slot      = "count",
     certainty = 0.92,
     explicit  = true,
-    match = function(c)
+    match     = function(c)
         return c.size == 2
-           and c.tokens[1].labels
-           and c.tokens[1].labels.prefix_separator
-           and c.tokens[2].traits
-           and c.tokens[2].traits.numeric
+            and c.tokens[1].labels
+            and c.tokens[1].labels.prefix_separator
+            and c.tokens[2].traits
+            and c.tokens[2].traits.numeric
     end,
-    evaluate = function(c)
+    evaluate  = function(c)
         return { value = tonumber(c.tokens[2].raw) }
     end,
 }
@@ -33,14 +33,14 @@ Rules[#Rules + 1] = {
     slot      = "count",
     certainty = 0.90,
     explicit  = true,
-    match = function(c)
+    match     = function(c)
         return c.size == 2
-           and c.tokens[1].traits
-           and c.tokens[1].traits.numeric
-           and c.tokens[2].labels
-           and c.tokens[2].labels.postfix_separator
+            and c.tokens[1].traits
+            and c.tokens[1].traits.numeric
+            and c.tokens[2].labels
+            and c.tokens[2].labels.postfix_separator
     end,
-    evaluate = function(c)
+    evaluate  = function(c)
         return { value = tonumber(c.tokens[1].raw) }
     end,
 }
@@ -52,14 +52,14 @@ Rules[#Rules + 1] = {
     certainty = 0.95,
     explicit  = true,
 
-    match = function(chunk)
+    match     = function(chunk)
         if chunk.size ~= 2 then return false end
         local a, b = chunk.tokens[1], chunk.tokens[2]
         return a.traits and a.traits.numeric
-           and b.labels and b.labels.infix_separator
+            and b.labels and b.labels.infix_separator
     end,
 
-    evaluate = function(chunk)
+    evaluate  = function(chunk)
         return { value = tonumber(chunk.tokens[1].raw) }
     end,
 }
@@ -71,14 +71,14 @@ Rules[#Rules + 1] = {
     slot      = "count",
     certainty = 0.95,
     explicit  = true,
-    match = function(c)
+    match     = function(c)
         return c.size == 2
-           and c.tokens[1].traits
-           and c.tokens[1].traits.numeric
-           and c.tokens[2].traits
-           and c.tokens[2].traits.unit_candidate
+            and c.tokens[1].traits
+            and c.tokens[1].traits.numeric
+            and c.tokens[2].traits
+            and c.tokens[2].traits.unit_candidate
     end,
-    evaluate = function(c)
+    evaluate  = function(c)
         local n = tonumber(c.tokens[1].raw)
         local k = c.tokens[2].traits.unit_kind
         if k == "count" then return { value = n, slot_override = "count" } end
@@ -94,10 +94,10 @@ Rules[#Rules + 1] = {
     slot      = "dimensions",
     certainty = 0.95,
     explicit  = true,
-    match = function(c)
+    match     = function(c)
         return c.has_num and c.has_infix and c.size >= 5
     end,
-    evaluate = function(c)
+    evaluate  = function(c)
         local nums = {}
         for _, t in ipairs(c.tokens) do
             if t.traits and t.traits.numeric then
@@ -124,7 +124,7 @@ Rules[#Rules + 1] = {
     certainty = 0.90,
     explicit  = true,
 
-    match = function(c)
+    match     = function(c)
         if not (c and c.has_num and c.has_infix and c.tokens) then return false end
 
         local nums = {}
@@ -137,24 +137,38 @@ Rules[#Rules + 1] = {
         return #nums == 4
     end,
 
-    evaluate = function(c)
+    evaluate  = function(c)
         local nums = {}
+        local first, last
+
         for _, t in ipairs(c.tokens) do
             if t.traits and t.traits.numeric then
                 nums[#nums + 1] = t
+                first           = first or t
+                last            = t
             end
         end
 
-        -- first 3 numeric tokens are dims
-        local h = tonumber(nums[1].raw)
-        local w = tonumber(nums[2].raw)
-        local l = tonumber(nums[3].raw)
-        if not (h and w and l) then return nil end
+        if #nums ~= 4 then return nil end
 
         return {
-            value = { height = h, width = w, length = l },
-            -- critical: do not span the count token
-            span_override = { from = nums[1].index, to = nums[3].index },
+            value = {
+                height = tonumber(nums[1].raw),
+                width  = tonumber(nums[2].raw),
+                length = tonumber(nums[3].raw),
+            },
+
+            -- semantic truth: dims only
+            span_override = {
+                from = nums[1].index,
+                to   = nums[3].index,
+            },
+
+            -- syntactic truth: whole chain consumed
+            touched = {
+                from = first.index,
+                to   = last.index,
+            },
         }
     end,
 }
@@ -168,7 +182,7 @@ Rules[#Rules + 1] = {
     certainty = 0.88,
     explicit  = true,
 
-    match = function(c)
+    match     = function(c)
         if not (c and c.has_num and c.has_infix and c.tokens) then return false end
 
         local nums = {}
@@ -181,22 +195,36 @@ Rules[#Rules + 1] = {
         return #nums == 4
     end,
 
-    evaluate = function(c)
+    evaluate  = function(c)
         local nums = {}
+        local first, last
+
         for _, t in ipairs(c.tokens) do
             if t.traits and t.traits.numeric then
                 nums[#nums + 1] = t
+                first           = first or t
+                last            = t
             end
         end
 
-        local ct = tonumber(nums[4].raw)
-        if not ct then return nil end
+        if #nums ~= 4 then return nil end
 
         return {
-            value = ct,
-            span_override = { from = nums[4].index, to = nums[4].index },
+            value = tonumber(nums[4].raw),
+
+            span_override = {
+                from = nums[4].index,
+                to   = nums[4].index,
+            },
+
+            -- consume the preceding infix separator
+            touched = {
+                from = nums[3].index,
+                to   = nums[4].index,
+            },
         }
     end,
+
 }
 
 -- Infix separator followed by numeric + length unit: "x8ft"
@@ -207,16 +235,29 @@ Rules[#Rules + 1] = {
     certainty = 0.95,
     explicit  = true,
 
-    match = function(chunk)
+    match     = function(chunk)
         if chunk.size ~= 3 then return false end
         local a, b, c = chunk.tokens[1], chunk.tokens[2], chunk.tokens[3]
         return a.labels and a.labels.infix_separator
-           and b.traits and b.traits.numeric
-           and c.traits and c.traits.unit_kind == "length"
+            and b.traits and b.traits.numeric
+            and c.traits and c.traits.unit_kind == "length"
     end,
 
-    evaluate = function(chunk)
-        return { value = tonumber(chunk.tokens[2].raw) }
+    evaluate  = function(chunk)
+        return {
+            value = tonumber(chunk.tokens[2].raw),
+
+            span_override = {
+                from = chunk.tokens[2].index,
+                to   = chunk.tokens[2].index,
+            },
+
+            -- consume the infix + number + unit
+            touched = {
+                from = chunk.tokens[1].index,
+                to   = chunk.tokens[3].index,
+            },
+        }
     end,
 }
 

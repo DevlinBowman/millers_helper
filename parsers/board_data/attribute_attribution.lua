@@ -4,6 +4,7 @@
 -- PURPOSE:
 --   • Apply declarative rules to tokens and chunks
 --   • Emit candidate claims with certainty and spans
+--   • Explicitly report which tokens were touched
 --   • Respect "stable spans" (committed high-certainty structure)
 --
 -- NON-RESPONSIBILITIES:
@@ -70,8 +71,6 @@ end
 ---                   }
 ---@param rules table[]
 ---@return table claims
--- parsers/board_data/attribute_attribution.lua
-
 function Attribution.run(ctx, rules)
     assert(type(ctx) == "table", "Attribution.run(): ctx required")
     assert(type(rules) == "table", "Attribution.run(): rules required")
@@ -93,6 +92,7 @@ function Attribution.run(ctx, rules)
             certainty = 1.0,
             rule      = "coverage_chunk_kind",
             span      = chunk.span,
+            touched   = chunk.span, -- explicit coverage
             scope     = "chunk",
             chunk_id  = chunk.id,
         }
@@ -115,14 +115,16 @@ function Attribution.run(ctx, rules)
                     local result = rule.evaluate(chunk, ctx)
 
                     if result and result.value ~= nil then
-                        local slot = result.slot_override or rule.slot
+                        local slot  = result.slot_override or rule.slot
+                        local span  = result.span_override or default_span
 
                         claims[#claims + 1] = {
                             slot      = slot,
                             value     = result.value,
                             certainty = result.certainty or rule.certainty or 0.5,
                             rule      = rule.name,
-                            span      = result.span_override or default_span,
+                            span      = span,
+                            touched   = span, -- explicit attribution footprint
                             scope     = "chunk",
                             chunk_id  = chunk.id,
                         }
@@ -150,13 +152,15 @@ function Attribution.run(ctx, rules)
 
                     if result and result.value ~= nil then
                         local slot = result.slot_override or rule.slot
+                        local out_span = result.span_override or span
 
                         claims[#claims + 1] = {
                             slot      = slot,
                             value     = result.value,
                             certainty = result.certainty or rule.certainty or 0.5,
                             rule      = rule.name,
-                            span      = result.span_override or span,
+                            span      = out_span,
+                            touched   = out_span, -- explicit attribution footprint
                             scope     = "token",
                         }
                     end

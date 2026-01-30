@@ -1,198 +1,90 @@
 -- parsers/text_pipeline.lua
 --
--- Orchestrates the full text → board-attribute pipeline
--- RESPONSIBILITIES:
---   • Run preprocessing
---   • Tokenize and chunk
---   • Attribute attribution + resolution
---   • Conditionally apply structural repair (chunk condense)
---   • Freeze high-certainty explicit matches ("stable spans")
---   • Attach inspection artifacts to records
+-- Public contract wrapper for the text pipeline.
+-- PURPOSE:
+--   • Run the internal pipeline (inspection artifacts)
+--   • Gate output into canonical records contract
 --
--- NON-RESPONSIBILITIES:
---   • No parsing logic
---   • No inference rules
---   • No structural heuristics beyond gating repair
+-- CONTRACT:
+--   return {
+--     kind = "records",
+--     data = table[],          -- canonical records ONLY
+--     meta = table,
+--     diagnostic = table[]?,   -- optional, stable structure
+--     debug = table[]?         -- ONLY when opts.debug == true
+--   }
 
-local Preprocess           = require("parsers.raw_text.preprocess")
-local Tokenize             = require("parsers.board_data.lex.tokenize")
-local ChunkBuilder         = require("parsers.board_data.chunk.chunk_builder")
-local ChunkCondense        = require("parsers.board_data.chunk.chunk_condense")
-local AttributeRules       = require("parsers.board_data.rules")
-local AttributeAttribution = require("parsers.board_data.attribute_attribution")
-local ClaimResolver        = require("parsers.board_data.claims.claim_resolver")
+local InternalPipeline = require("parsers.text_pipeline.pipeline")
 
-local TextPipeline         = {}
-
--- "Stop fucking with it" threshold:
--- anything explicitly claimed at/above this certainty becomes stable.
-local STABLE_CERTAINTY     = 0.95
+local TextPipeline = {}
 
 ----------------------------------------------------------------
--- Formatting helpers (inspection only)
+-- Diagnostics (user-facing, stable)
 ----------------------------------------------------------------
 
-local function format_resolved(resolved)
-    local keys = { "h", "w", "l", "ct", "tag" }
-    local out  = {}
-
-    for _, k in ipairs(keys) do
-        if resolved and resolved[k] ~= nil then
-            out[#out + 1] = string.format("{%s=%s}", k, tostring(resolved[k]))
-        end
-    end
-
-    return table.concat(out, " ")
-end
-
-local function missing_required_dims(resolved)
-    return not (resolved and resolved.h and resolved.w and resolved.l)
-end
-
-----------------------------------------------------------------
--- Stable spans
--- Stable spans are token ranges that produced high-certainty claims.
--- They are kept in-context, but future passes must not "re-assign" them,
--- and condense should not merge across them.
-----------------------------------------------------------------
-
-local function span_overlaps(a, b)
-    if not a or not b then return false end
-    return not (a.to < b.from or b.to < a.from)
-end
-
-local function mark_stable_spans(record)
-    record._stable_spans = {}
-
-    for _, p in ipairs(record._picked or {}) do
-        if p and p.span and p.certainty and p.certainty >= STABLE_CERTAINTY then
-            record._stable_spans[#record._stable_spans + 1] = {
-                field     = p.field,
-                span      = { from = p.span.from, to = p.span.to },
-                certainty = p.certainty,
-                rule      = p.rule,
-            }
-        end
-    end
-end
-
-local function token_is_in_stable_span(tok, stable_spans)
-    if not tok or not tok.index or not stable_spans then return false end
-    for _, s in ipairs(stable_spans) do
-        if tok.index >= s.span.from and tok.index <= s.span.to then
-            return true
-        end
-    end
-    return false
-end
-
-local function chunk_overlaps_any_stable(chunk, stable_spans)
-    if not chunk or not chunk.span or not stable_spans then return false end
-    for _, s in ipairs(stable_spans) do
-        if span_overlaps(chunk.span, s.span) then
-            return true
-        end
-    end
-    return false
-end
-
-----------------------------------------------------------------
--- Structural repair gate
--- Determines whether chunk condensation is justified
-----------------------------------------------------------------
-
-local function needs_structural_repair(record)
-    local stable_spans = record._stable_spans or {}
-
-    -- ------------------------------------------------------------
-    -- 1. Any numeric tokens not covered by any picked claim span,
-    --    excluding numeric tokens already inside stable spans.
-    -- ------------------------------------------------------------
-    do
-        local covered_spans = {}
-        for _, p in ipairs(record._picked or {}) do
-            if p and p.span then
-                covered_spans[#covered_spans + 1] = p.span
-            end
-        end
-
-        for _, t in ipairs(record._tokens or {}) do
-            if t.traits and t.traits.numeric then
-                if not token_is_in_stable_span(t, stable_spans) then
-                    local used = false
-                    for _, s in ipairs(covered_spans) do
-                        if t.index >= s.from and t.index <= s.to then
-                            used = true
-                            break
-                        end
-                    end
-                    if not used then
-                        return true
-                    end
-                end
-            end
-        end
-    end
-
-    -- ------------------------------------------------------------
-    -- 2. Adjacent chunks both carry numeric-related structure,
-    --    and the boundary is not inside/overlapping any stable span.
-    -- ------------------------------------------------------------
-    local chunks = record._chunks or {}
-    for i = 1, #chunks - 1 do
-        local a, b = chunks[i], chunks[i + 1]
-
-        local a_struct = a and (a.has_num or a.has_unit or a.has_infix)
-        local b_struct = b and (b.has_num or b.has_unit or b.has_infix)
-
-        if a_struct and b_struct then
-            -- If either side overlaps stable spans, we should not repair/condense here.
-            if not chunk_overlaps_any_stable(a, stable_spans)
-                and not chunk_overlaps_any_stable(b, stable_spans)
-            then
-                return true
-            end
-        end
-    end
-
-    return false
-end
-
-----------------------------------------------------------------
--- Condense only if it will not touch stable spans
-----------------------------------------------------------------
-
--- parsers/text_pipeline.lua
-
-local function condense_if_safe(record)
-    -- Stable spans must act as BARRIERS, not disable condensation.
-    -- Condense can still happen inside unstable regions.
-    return ChunkCondense.run(record._tokens, record._chunks, {
-        stable_spans = record._stable_spans,
-    })
-end
-
-----------------------------------------------------------------
--- Internal pass runner
--- Passes stable_spans through ctx so attribution can optionally skip stable spans.
-----------------------------------------------------------------
-
-local function run_pass(record, chunks, pass_tag)
-    local claims = AttributeAttribution.run({
-        tokens       = record._tokens,
-        chunks       = chunks,
-        stable_spans = record._stable_spans,
-        resolved     = record._resolved, -- ADD THIS
-    }, AttributeRules)
-
-    local resolved, picked = ClaimResolver.resolve(claims)
-
-    return {
-        tag      = pass_tag,
-        claims   = claims,
-        resolved = resolved,
-        picked   = picked,
+local function build_diagnostic(line)
+    local diag = {
+        ok      = true,
+        signals = {},
     }
+
+    local resolved = line._resolved or {}
+
+    if next(resolved) == nil then
+        diag.ok = false
+        diag.signals[#diag.signals + 1] = {
+            kind   = "unparsed_line",
+            detail = "no usable structure recognized",
+        }
+        return diag
+    end
+
+    local leftovers = line._unused_groups or {}
+    if #leftovers > 0 then
+        diag.signals[#diag.signals + 1] = {
+            kind   = "unrecognized_input",
+            detail = leftovers,
+        }
+    end
+
+    local contested = line._contested_groups or {}
+    if #contested > 0 then
+        diag.signals[#diag.signals + 1] = {
+            kind   = "unclassified_but_considered",
+            detail = contested,
+        }
+    end
+
+    return diag
+end
+
+----------------------------------------------------------------
+-- SACRED: canonical record extraction
+----------------------------------------------------------------
+
+local function build_ingestion_record(line)
+    local out = {}
+
+    local r = line._resolved or {}
+    if r.h   ~= nil then out.h   = r.h end
+    if r.w   ~= nil then out.w   = r.w end
+    if r.l   ~= nil then out.l   = r.l end
+    if r.ct  ~= nil then out.ct  = r.ct end
+    if r.tag ~= nil then out.tag = r.tag end
+
+    -- Tail passthrough (authoritative user data):
+    -- Keep only non-internal keys from the preprocess record.
+    for k, v in pairs(line) do
+        if type(k) == "string"
+            and not k:match("^_")
+            and not k:match("^__")
+            and out[k] == nil
+        then
+            out[k] = v
+        end
+    end
+
+    return out
 end
 
 ----------------------------------------------------------------
@@ -200,106 +92,59 @@ end
 ----------------------------------------------------------------
 
 ---@param lines string[]
----@return { kind: "records", data: table[], meta: table }
-function TextPipeline.run(lines)
-    assert(type(lines) == "table", "TextPipeline.run(): lines must be table")
+---@param opts table|nil -- { debug = boolean }
+---@return table -- { kind="records", data=..., meta=..., diagnostic?, debug? }
+function TextPipeline.run(lines, opts)
+    opts = opts or {}
 
-    local records = Preprocess.run(lines)
+    -- Run internal pipeline (produces inspection artifacts per line)
+    local pipeline_out = InternalPipeline.run(lines, opts)
 
-    for _, record in ipairs(records) do
-        -- --------------------------------------------------------
-        -- Tokenization
-        -- --------------------------------------------------------
-        record._tokens        = Tokenize.run(record.head)
+    assert(
+        type(pipeline_out) == "table" and pipeline_out.kind == "records",
+        "text pipeline internal must return kind='records'"
+    )
+    assert(type(pipeline_out.data) == "table", "text pipeline internal: missing data")
 
-        local lex, labels     = Tokenize.format_tokens(record._tokens)
-        record._token_lex     = lex
-        record._token_kinds   = labels
+    local line_records = pipeline_out.data
 
-        -- --------------------------------------------------------
-        -- Initial chunking
-        -- --------------------------------------------------------
-        record._chunks        = ChunkBuilder.build(record._tokens)
-        record._chunk_view    = ChunkBuilder.format(record._chunks)
-        record._condensed     = false
+    -- Gate into output tiers
+    local data       = {}
+    local diagnostic = {}
+    local debug      = nil
 
-        -- --------------------------------------------------------
-        -- Pass 1: baseline attribution
-        -- --------------------------------------------------------
-        local pass1           = run_pass(record, record._chunks, "base")
+    if opts.debug then
+        debug = {}
+    end
 
-        record._claims        = pass1.claims
-        record._resolved      = pass1.resolved
-        record._picked        = pass1.picked
-        record._resolved_view = format_resolved(pass1.resolved)
+    for i, line in ipairs(line_records) do
+        data[i]       = build_ingestion_record(line)
+        diagnostic[i] = build_diagnostic(line)
 
-        -- --------------------------------------------------------
-        -- Commit stable spans from high-certainty picks
-        -- --------------------------------------------------------
-        mark_stable_spans(record)
-
-        -- --------------------------------------------------------
-        -- Pass 2: structural repair (conditional + stable-safe)
-        -- --------------------------------------------------------
-        if missing_required_dims(pass1.resolved)
-            and needs_structural_repair(record)
-        then
-            local condensed    = condense_if_safe(record)
-
-            -- Only proceed if condensation actually changed something meaningful
-            -- (avoid rerunning pass2 if condense became a no-op due to stability)
-            local changed      = (condensed ~= record._chunks) or (ChunkBuilder.format(condensed) ~= record._chunk_view)
-
-            record._chunks     = condensed
-            record._chunk_view = ChunkBuilder.format(condensed)
-            record._condensed  = changed and true or record._condensed
-
-            if changed then
-                local pass2 = run_pass(record, condensed, "condensed")
-
-                -- Preserve stable resolved fields from pass1
-                local merged_resolved = {}
-
-                -- 1) carry forward stable fields
-                for _, s in ipairs(record._stable_spans or {}) do
-                    merged_resolved[s.field] = record._resolved[s.field]
-                end
-
-                -- 2) overlay new pass2 results
-                for k, v in pairs(pass2.resolved or {}) do
-                    merged_resolved[k] = v
-                end
-
-                -- 3) merge picked (stable + new)
-                local merged_picked = {}
-                for _, p in ipairs(record._picked or {}) do
-                    merged_picked[#merged_picked + 1] = p
-                end
-                for _, p in ipairs(pass2.picked or {}) do
-                    merged_picked[#merged_picked + 1] = p
-                end
-
-                record._claims        = pass2.claims
-                record._resolved      = merged_resolved
-                record._picked        = merged_picked
-                record._resolved_view = format_resolved(merged_resolved)
-
-                -- Update stable spans again after pass2, in case it produced
-                -- additional high-certainty commits.
-                mark_stable_spans(record)
-            end
+        if opts.debug then
+            debug[i] = line
         end
     end
 
-    return {
-        kind = "records",
-        data = records,
-        meta = {
-            source       = "text",
-            record_count = #records,
-            pipeline     = "text_pipeline",
-        }
+    local result = {
+        kind       = "records",
+        data       = data,
+        diagnostic = diagnostic,
+        meta       = pipeline_out.meta or {
+            parser = "text_pipeline",
+            count  = #data,
+        },
     }
+
+    -- Ensure meta.count stays correct for canonical records
+    result.meta = result.meta or {}
+    result.meta.count = #data
+
+    if opts.debug then
+        result.debug = debug
+    end
+
+    return result
 end
 
 return TextPipeline
