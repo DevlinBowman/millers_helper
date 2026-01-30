@@ -3,7 +3,7 @@
 -- Text parser pipeline (manager only)
 -- PURPOSE:
 --   • Coordinate preprocessing
---   • Coordinate tokenization
+--   • Coordinate tokenization (layered facade)
 --   • Enforce ingestion contract
 --   • NO parsing logic
 
@@ -24,15 +24,17 @@ function TextPipeline.run(lines)
 
     -- --------------------------------------------
     -- 2) Tokenization (ephemeral parser state)
+    --    Now layered: lex -> traits -> labels
     -- --------------------------------------------
     for _, record in ipairs(pre) do
-        record._tokens      = Tokenize.run(record.head)
-
-        local lex, kinds    = Tokenize.format_tokens(record._tokens)
-        record._token_lex   = lex
-        record._token_kinds = kinds -- NOTE:
+        record._tokens = Tokenize.run(record.head)
         -- _tokens is ephemeral
         -- parser logic will consume and delete later
+
+
+        local lex, labels   = Tokenize.format_tokens(record._tokens)
+        record._token_lex   = lex
+        record._token_kinds = labels -- kept name for compatibility; now actually label view
     end
 
     return {

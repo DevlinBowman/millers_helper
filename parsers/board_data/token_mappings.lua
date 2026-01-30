@@ -2,26 +2,21 @@
 --
 -- Authoritative token vocabulary + primitive patterns
 -- PURPOSE:
---   • Define WHAT tokens are allowed to exist
---   • Define HOW they may appear lexically
---   • Feed tokenizer + validators
---   • NO inference, NO board logic
---
--- Any new token shape MUST be added here first.
+--   • Define vocabulary and primitive shapes
+--   • Provide context-free lookup helpers
+--   • NO inference, NO parsing, NO reduction
 
 local TokenMap = {}
 
 ----------------------------------------------------------------
--- Token kinds (closed set)
+-- Lexical kinds (for lexer output only)
 ----------------------------------------------------------------
-TokenMap.KINDS = {
+TokenMap.LEX = {
     NUMBER = "number",
     WORD   = "word",
-    UNIT   = "unit",
-    SEP    = "sep",
-    TAG    = "tag",
     OP     = "op",
-    WS     = "ws"
+    WS     = "ws",
+    SYMBOL = "symbol",
 }
 
 ----------------------------------------------------------------
@@ -44,7 +39,7 @@ TokenMap.OPERATORS = {
 }
 
 ----------------------------------------------------------------
--- Separators (dimension / multiplicative glue)
+-- Separators (candidate tokens; meaning is contextual)
 ----------------------------------------------------------------
 TokenMap.SEPARATORS = {
     "x",
@@ -90,7 +85,7 @@ TokenMap.NUMERIC = {
 }
 
 ----------------------------------------------------------------
--- Units (dimension-agnostic)
+-- Units (dimension-agnostic; meaning is contextual)
 ----------------------------------------------------------------
 TokenMap.UNITS = {
     length = {
@@ -109,6 +104,7 @@ TokenMap.UNITS = {
 
 ----------------------------------------------------------------
 -- Tags (normalized output only)
+-- NOTE: "n"/"f" single-letter are treated as strict tags
 ----------------------------------------------------------------
 TokenMap.TAGS = {
     n = { "n", "nom", "nominal" },
@@ -126,7 +122,7 @@ TokenMap.WORD_PATTERNS = {
 }
 
 ----------------------------------------------------------------
--- Precompiled lookup tables (for tokenizer speed)
+-- Precompiled lookup tables (for speed)
 ----------------------------------------------------------------
 local function invert(list)
     local out = {}
@@ -139,8 +135,8 @@ end
 TokenMap._LOOKUP = {
     separators = invert(TokenMap.SEPARATORS),
     operators  = {},
-    units      = {},
-    tags       = {},
+    units_kind = {}, -- maps unit -> "length" | "count"
+    tags       = {}, -- maps variant -> canon ("n"|"f")
 }
 
 for _, group in pairs(TokenMap.OPERATORS) do
@@ -149,9 +145,9 @@ for _, group in pairs(TokenMap.OPERATORS) do
     end
 end
 
-for _, group in pairs(TokenMap.UNITS) do
+for kind, group in pairs(TokenMap.UNITS) do
     for _, u in ipairs(group) do
-        TokenMap._LOOKUP.units[string.lower(u)] = true
+        TokenMap._LOOKUP.units_kind[string.lower(u)] = kind
     end
 end
 
@@ -162,27 +158,44 @@ for canon, variants in pairs(TokenMap.TAGS) do
 end
 
 ----------------------------------------------------------------
--- Public helpers (used by tokenizer, NOT parser)
+-- Public helpers (context-free)
 ----------------------------------------------------------------
 
-function TokenMap.is_separator(s)
-    return TokenMap._LOOKUP.separators[string.lower(s)] == true
-end
-
+---@param s string
+---@return boolean
 function TokenMap.is_operator(s)
     return TokenMap._LOOKUP.operators[s] == true
 end
 
-function TokenMap.is_unit(s)
-    return TokenMap._LOOKUP.units[string.lower(s)] == true
+---@param s string
+---@return boolean
+function TokenMap.is_separator_candidate(s)
+    return TokenMap._LOOKUP.separators[string.lower(s)] == true
 end
 
-function TokenMap.is_tag(s)
-    return TokenMap._LOOKUP.tags[string.lower(s)] ~= nil
+---@param s string
+---@return boolean
+function TokenMap.is_unit_candidate(s)
+    return TokenMap._LOOKUP.units_kind[string.lower(s)] ~= nil
 end
 
+---@param s string
+---@return ("length"|"count"|nil)
+function TokenMap.unit_kind(s)
+    return TokenMap._LOOKUP.units_kind[string.lower(s)]
+end
+
+---@param s string
+---@return (string|nil) canon_tag  -- "n"|"f"
 function TokenMap.normalize_tag(s)
     return TokenMap._LOOKUP.tags[string.lower(s)]
+end
+
+---@param s string
+---@return boolean
+function TokenMap.is_strict_tag_letter(s)
+    local lower = string.lower(s)
+    return lower == "n" or lower == "f"
 end
 
 return TokenMap
