@@ -13,6 +13,7 @@ local TokenMap  = require("parsers.board_data.token_mappings")
 local Lexer     = require("parsers.board_data.lexer")
 local Classify  = require("parsers.board_data.classify")
 local Labeler   = require("parsers.board_data.labeler")
+local ReduceFraction = require("parsers.board_data.reduce_fractional_number")
 
 local Tokenize = {}
 
@@ -24,6 +25,9 @@ function Tokenize.run(raw)
     local tokens = Lexer.run(raw)
     Classify.run(tokens)
     Labeler.run(tokens)
+
+    -- ONLY destructive pass in this pipeline
+    tokens = ReduceFraction.run(tokens)
 
     return tokens
 end
