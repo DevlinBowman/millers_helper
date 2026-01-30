@@ -59,6 +59,7 @@ function TextPipeline.run(lines)
         record._claims = claims
         record._resolved = resolved
         record._resolved_view = format_resolved(resolved)
+        record._condensed = false
 
         -- Failsafe Pass 2: condense + retry if missing h/w/l
         if missing_required_dims(resolved) then

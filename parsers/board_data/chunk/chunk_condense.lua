@@ -2,10 +2,17 @@
 --
 -- PURPOSE:
 --   • Attempt to reduce ambiguity caused by overspacing
---   • Merge adjacent chunks when that merge is "reasonable"
+--   • Merge adjacent chunks when that merge is mechanically safe
+--   • Defer ALL illegal-merge logic to chunk_ignore
 --   • Used as a failsafe when resolution misses required dims
 
+local Ignore = require("parsers.board_data.chunk.chunk_ignore")
+
 local Condense = {}
+
+----------------------------------------------------------------
+-- Helpers
+----------------------------------------------------------------
 
 local function clone_chunk_like(id, a, b)
     local tokens = {}
@@ -13,52 +20,49 @@ local function clone_chunk_like(id, a, b)
     for _, t in ipairs(b.tokens) do tokens[#tokens + 1] = t end
 
     local merged = {
-        id     = id,
-        tokens = tokens,
-        span   = { from = a.span.from, to = b.span.to },
+        id        = id,
+        tokens    = tokens,
+        span      = { from = a.span.from, to = b.span.to },
 
-        has_num   = (a.has_num or b.has_num),
-        has_unit  = (a.has_unit or b.has_unit),
-        has_tag   = (a.has_tag or b.has_tag),
+        -- propagate structural flags only (no inference)
+        has_num   = (a.has_num   or b.has_num),
+        has_unit  = (a.has_unit  or b.has_unit),
+        has_tag   = (a.has_tag   or b.has_tag),
         has_infix = (a.has_infix or b.has_infix),
     }
 
     return merged
 end
 
-local function is_standalone_numeric(chunk)
-    return chunk
-       and chunk.size == 1
-       and chunk.has_num
-end
-
-local function looks_like_dimension_chain_chunk(chunk)
-    -- cheap: needs infix separators and 3 numbers inside
-    if not (chunk and chunk.has_infix and chunk.has_num) then return false end
-    local num_ct = 0
-    for _, t in ipairs(chunk.tokens) do
-        if t.traits and t.traits.numeric then num_ct = num_ct + 1 end
-    end
-    return num_ct >= 3
-end
+----------------------------------------------------------------
+-- Merge policy
+----------------------------------------------------------------
 
 local function merge_reasonable(left, right)
-    -- Don't merge count-like singleton into a dimension chain chunk
-    if is_standalone_numeric(left) and looks_like_dimension_chain_chunk(right) then
-        return false
-    end
-    if is_standalone_numeric(right) and looks_like_dimension_chain_chunk(left) then
+    -- ------------------------------------------------------------
+    -- HARD PROHIBITIONS (structural invariants)
+    -- ------------------------------------------------------------
+    if Ignore.should_forbid_merge(left, right) then
         return false
     end
 
-    -- Avoid merging units into unrelated chains (keeps "10pcs" intact)
+    -- ------------------------------------------------------------
+    -- SOFT MECHANICAL HEURISTICS
+    -- (these are about overspacing only, not meaning)
+    -- ------------------------------------------------------------
+
+    -- Avoid merging units into unrelated chains (keeps "10 pcs" intact)
     if left.has_unit ~= right.has_unit and (left.has_unit or right.has_unit) then
-        -- allow merge only if one side is a singleton 'x' separator chunk
-        local function is_single_sep_x(c)
-            return c and c.size == 1 and c.tokens[1]
-               and c.tokens[1].labels and c.tokens[1].labels.separator_candidate
+        -- allow merge only if one side is a singleton separator
+        local function is_single_separator(c)
+            return c
+               and c.size == 1
+               and c.tokens[1]
+               and c.tokens[1].labels
+               and c.tokens[1].labels.separator_candidate
         end
-        if not (is_single_sep_x(left) or is_single_sep_x(right)) then
+
+        if not (is_single_separator(left) or is_single_separator(right)) then
             return false
         end
     end
@@ -66,10 +70,9 @@ local function merge_reasonable(left, right)
     return true
 end
 
-local function starts_with_infix(chunk)
-    local t = chunk.tokens[1]
-    return t and t.labels and t.labels.infix_separator
-end
+----------------------------------------------------------------
+-- Public API
+----------------------------------------------------------------
 
 ---@param tokens table[]
 ---@param chunks table[]
@@ -91,19 +94,20 @@ function Condense.run(tokens, chunks)
         local cur = chunks[i]
         id = id + 1
 
-        -- Greedy merge forward while reasonable
+        -- Greedy forward merge while mechanically safe
         local merged = cur
         local j = i + 1
+
         while j <= #chunks do
             local nxt = chunks[j]
+
             merged.size = merged.size or #merged.tokens
-            nxt.size = nxt.size or #nxt.tokens
+            nxt.size    = nxt.size    or #nxt.tokens
 
             if not merge_reasonable(merged, nxt) then
                 break
             end
 
-            -- Merge
             merged = clone_chunk_like(id, merged, nxt)
             merged.size = #merged.tokens
             j = j + 1

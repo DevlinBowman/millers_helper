@@ -45,6 +45,25 @@ Rules[#Rules + 1] = {
     end,
 }
 
+Rules[#Rules + 1] = {
+    name      = "chunk_count_postfix_infix",
+    scope     = "chunk",
+    slot      = "count",
+    certainty = 0.95,
+    explicit  = true,
+
+    match = function(chunk)
+        if chunk.size ~= 2 then return false end
+        local a, b = chunk.tokens[1], chunk.tokens[2]
+        return a.traits and a.traits.numeric
+           and b.labels and b.labels.infix_separator
+    end,
+
+    evaluate = function(chunk)
+        return { value = tonumber(chunk.tokens[1].raw) }
+    end,
+}
+
 -- Glued number + unit: "10pcs" / "8ft"
 Rules[#Rules + 1] = {
     name      = "chunk_explicit_num_unit",
@@ -93,6 +112,27 @@ Rules[#Rules + 1] = {
                 length = nums[3],
             }
         }
+    end,
+}
+
+-- Infix separator followed by numeric + length unit: "x8ft"
+Rules[#Rules + 1] = {
+    name      = "chunk_length_postfix_infix",
+    scope     = "chunk",
+    slot      = "length",
+    certainty = 0.95,
+    explicit  = true,
+
+    match = function(chunk)
+        if chunk.size ~= 3 then return false end
+        local a, b, c = chunk.tokens[1], chunk.tokens[2], chunk.tokens[3]
+        return a.labels and a.labels.infix_separator
+           and b.traits and b.traits.numeric
+           and c.traits and c.traits.unit_kind == "length"
+    end,
+
+    evaluate = function(chunk)
+        return { value = tonumber(chunk.tokens[2].raw) }
     end,
 }
 
