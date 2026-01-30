@@ -19,6 +19,10 @@ end
 -- ------------------------------------------------------------
 -- Rule 1: Leading count marker is atomic
 --   ^[num][sep]
+--
+-- IMPORTANT:
+--   This MUST NOT fire for true infix separators (dimension chains),
+--   e.g. "2 x 4 ..." where 'x' is infix (prev num + next num).
 -- ------------------------------------------------------------
 local function forbid_leading_count_merge(left, right)
     if not (left and right) then return false end
@@ -28,7 +32,18 @@ local function forbid_leading_count_merge(left, right)
     local a = left.tokens[1]
     local b = left.tokens[2]
 
-    return is_numeric(a) and is_separator(b)
+    if not (is_numeric(a) and is_separator(b)) then
+        return false
+    end
+
+    -- If this separator is an infix, this is part of a dimension chain,
+    -- not a leading count marker. Allow merging.
+    if b.labels and b.labels.infix_separator then
+        return false
+    end
+
+    -- Otherwise (prefix/postfix separator), keep it atomic.
+    return true
 end
 
 -- ------------------------------------------------------------

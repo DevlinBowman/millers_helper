@@ -1,8 +1,24 @@
 -- parsers/board_data/attribute_attribution.lua
+--
+-- Attribute attribution engine
+-- PURPOSE:
+--   • Apply declarative rules to tokens and chunks
+--   • Emit candidate claims with certainty and spans
+--   • Respect "stable spans" (committed high-certainty structure)
+--
+-- NON-RESPONSIBILITIES:
+--   • No resolution / arbitration
+--   • No mutation of tokens or chunks
+--   • No structural repair
+--   • No inference heuristics
 
 local Matcher = require("parsers.board_data.pattern.pattern_match")
 
 local Attribution = {}
+
+----------------------------------------------------------------
+-- Structural classification (coverage only)
+----------------------------------------------------------------
 
 local function infer_chunk_kind(chunk)
     -- purely structural bucket, NOT semantic truth
@@ -24,30 +40,62 @@ local function infer_chunk_kind(chunk)
     return "unknown"
 end
 
----@param ctx table  -- { tokens, chunks }
+----------------------------------------------------------------
+-- Stable span helpers
+----------------------------------------------------------------
+
+local function spans_overlap(a, b)
+    if not a or not b then return false end
+    return not (a.to < b.from or b.to < a.from)
+end
+
+local function span_is_stable(span, stable_spans)
+    if not span or not stable_spans then return false end
+    for _, s in ipairs(stable_spans) do
+        if spans_overlap(span, s.span) then
+            return true
+        end
+    end
+    return false
+end
+
+----------------------------------------------------------------
+-- Public API
+----------------------------------------------------------------
+
+---@param ctx table   -- {
+---                     tokens,
+---                     chunks,
+---                     stable_spans? = { { field, span, certainty, rule } }
+---                   }
 ---@param rules table[]
 ---@return table claims
+-- parsers/board_data/attribute_attribution.lua
+
 function Attribution.run(ctx, rules)
     assert(type(ctx) == "table", "Attribution.run(): ctx required")
     assert(type(rules) == "table", "Attribution.run(): rules required")
 
+    local tokens       = ctx.tokens or {}
+    local chunks       = ctx.chunks or {}
+    local stable_spans = ctx.stable_spans
+
     local claims = {}
 
     -- ------------------------------------------------------------
-    -- Coverage: claim every chunk (structural bucket)
+    -- Coverage: structural classification for every chunk
+    -- (Coverage is allowed to overlap stable spans; it is non-semantic)
     -- ------------------------------------------------------------
-    if ctx.chunks then
-        for _, chunk in ipairs(ctx.chunks) do
-            claims[#claims + 1] = {
-                slot      = "chunk_kind",
-                value     = infer_chunk_kind(chunk),
-                certainty = 1.0,
-                rule      = "coverage_chunk_kind",
-                span      = chunk.span,
-                scope     = "chunk",
-                chunk_id  = chunk.id,
-            }
-        end
+    for _, chunk in ipairs(chunks) do
+        claims[#claims + 1] = {
+            slot      = "chunk_kind",
+            value     = infer_chunk_kind(chunk),
+            certainty = 1.0,
+            rule      = "coverage_chunk_kind",
+            span      = chunk.span,
+            scope     = "chunk",
+            chunk_id  = chunk.id,
+        }
     end
 
     -- ------------------------------------------------------------
@@ -55,45 +103,68 @@ function Attribution.run(ctx, rules)
     -- ------------------------------------------------------------
     for _, rule in ipairs(rules) do
         if rule.scope == "chunk" then
-            assert(ctx.chunks, "chunk-scoped rule requires ctx.chunks")
-            for _, chunk in ipairs(ctx.chunks) do
+            for _, chunk in ipairs(chunks) do
+                local default_span = chunk.span
+
+                -- Do not re-attribute stable structure
+                if span_is_stable(default_span, stable_spans) then
+                    goto continue_chunk
+                end
+
                 if rule.match(chunk, ctx) then
                     local result = rule.evaluate(chunk, ctx)
+
                     if result and result.value ~= nil then
+                        local slot = result.slot_override or rule.slot
+
                         claims[#claims + 1] = {
-                            slot      = rule.slot,
+                            slot      = slot,
                             value     = result.value,
                             certainty = result.certainty or rule.certainty or 0.5,
                             rule      = rule.name,
-                            span      = chunk.span,
+                            span      = result.span_override or default_span,
                             scope     = "chunk",
                             chunk_id  = chunk.id,
                         }
                     end
                 end
+
+                ::continue_chunk::
             end
 
         elseif rule.scope == "token" then
-            local tokens = ctx.tokens
             for i = 1, #tokens do
                 local match = Matcher.match_at(tokens, i, rule.pattern)
                 if match then
+                    local span = { from = i, to = i + #rule.pattern - 1 }
+
+                    -- Do not re-attribute stable structure
+                    if span_is_stable(span, stable_spans) then
+                        goto continue_token
+                    end
+
                     local result = rule.evaluate(match, {
                         tokens      = tokens,
                         start_index = i,
                     })
+
                     if result and result.value ~= nil then
+                        local slot = result.slot_override or rule.slot
+
                         claims[#claims + 1] = {
-                            slot      = rule.slot,
+                            slot      = slot,
                             value     = result.value,
                             certainty = result.certainty or rule.certainty or 0.5,
                             rule      = rule.name,
-                            span      = { from = i, to = i + #rule.pattern - 1 },
+                            span      = result.span_override or span,
                             scope     = "token",
                         }
                     end
                 end
+
+                ::continue_token::
             end
+
         else
             error("Rule '" .. tostring(rule.name) .. "' is missing scope")
         end

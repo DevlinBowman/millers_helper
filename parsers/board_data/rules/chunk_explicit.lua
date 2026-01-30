@@ -115,6 +115,90 @@ Rules[#Rules + 1] = {
     end,
 }
 
+-- 4-number infix chain: treat first 3 nums as dimensions (h,w,l)
+-- Example: "2 x 4 x 8 x 10" => dims = 2x4x8 (ct handled by separate rule)
+Rules[#Rules + 1] = {
+    name      = "chunk_dimension_chain_3_of_4",
+    scope     = "chunk",
+    slot      = "dimensions",
+    certainty = 0.90,
+    explicit  = true,
+
+    match = function(c)
+        if not (c and c.has_num and c.has_infix and c.tokens) then return false end
+
+        local nums = {}
+        for _, t in ipairs(c.tokens) do
+            if t.traits and t.traits.numeric then
+                nums[#nums + 1] = t
+            end
+        end
+
+        return #nums == 4
+    end,
+
+    evaluate = function(c)
+        local nums = {}
+        for _, t in ipairs(c.tokens) do
+            if t.traits and t.traits.numeric then
+                nums[#nums + 1] = t
+            end
+        end
+
+        -- first 3 numeric tokens are dims
+        local h = tonumber(nums[1].raw)
+        local w = tonumber(nums[2].raw)
+        local l = tonumber(nums[3].raw)
+        if not (h and w and l) then return nil end
+
+        return {
+            value = { height = h, width = w, length = l },
+            -- critical: do not span the count token
+            span_override = { from = nums[1].index, to = nums[3].index },
+        }
+    end,
+}
+
+-- 4-number infix chain: trailing count
+-- Example: "2 x 4 x 8 x 10" => ct = 10
+Rules[#Rules + 1] = {
+    name      = "chunk_count_trailing_infix_chain_4",
+    scope     = "chunk",
+    slot      = "count",
+    certainty = 0.88,
+    explicit  = true,
+
+    match = function(c)
+        if not (c and c.has_num and c.has_infix and c.tokens) then return false end
+
+        local nums = {}
+        for _, t in ipairs(c.tokens) do
+            if t.traits and t.traits.numeric then
+                nums[#nums + 1] = t
+            end
+        end
+
+        return #nums == 4
+    end,
+
+    evaluate = function(c)
+        local nums = {}
+        for _, t in ipairs(c.tokens) do
+            if t.traits and t.traits.numeric then
+                nums[#nums + 1] = t
+            end
+        end
+
+        local ct = tonumber(nums[4].raw)
+        if not ct then return nil end
+
+        return {
+            value = ct,
+            span_override = { from = nums[4].index, to = nums[4].index },
+        }
+    end,
+}
+
 -- Infix separator followed by numeric + length unit: "x8ft"
 Rules[#Rules + 1] = {
     name      = "chunk_length_postfix_infix",

@@ -31,6 +31,9 @@ local function expand_claim(claim)
     elseif claim.slot == "count" then
         out[#out + 1] = { field="ct", value=claim.value, certainty=claim.certainty, span=claim.span, rule=claim.rule }
 
+    elseif claim.slot == "length" then
+        out[#out + 1] = { field="l", value=claim.value, certainty=claim.certainty, span=claim.span, rule=claim.rule }
+
     elseif claim.slot == "tag" then
         out[#out + 1] = { field="tag", value=claim.value, certainty=claim.certainty, span=claim.span, rule=claim.rule }
     end
