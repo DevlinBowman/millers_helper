@@ -1,4 +1,4 @@
--- parsers/board_data/token_mappings.lua
+-- parsers/board_data/lex/token_mappings.lua
 --
 -- Authoritative token vocabulary + primitive patterns
 -- PURPOSE:

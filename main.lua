@@ -9,8 +9,10 @@ local Serialize = require("core.board.serialize")
 
 
 local data = assert(Adapter.ingest("tests/data_format/input.txt"))
-local inspect_opts = { ignore_keys = '_tokens'}
+local inspect_opts = { ignore_keys = {'_tokens', '_chunks', '_claims'}}
 I.print(data, inspect_opts)
+
+-- I.print(data)
 
 
 -- local table_data = Serialize.boards_to_table(result.data)

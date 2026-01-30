@@ -1,4 +1,4 @@
--- parsers/board_data/reduce_fractional_number.lua
+-- parsers/board_data/lex/reduce_fractional_number.lua
 --
 -- Fractional numeric reducer
 -- PURPOSE:
@@ -7,7 +7,7 @@
 --   • Destructive pass (token replacement)
 --   • NO semantic meaning beyond numeric value
 
-local TokenMap = require("parsers.board_data.token_mappings")
+local TokenMap = require("parsers.board_data.lex.token_mappings")
 
 local ReduceFraction = {}
 

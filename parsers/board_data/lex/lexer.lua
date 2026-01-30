@@ -1,4 +1,4 @@
--- parsers/board_data/lexer.lua
+-- parsers/board_data/lex/lexer.lua
 --
 -- Domain-aware lexical segmentation
 -- PURPOSE:
@@ -8,7 +8,7 @@
 --   • NO semantic meaning
 --   • NO reduction
 
-local TokenMap = require("parsers.board_data.token_mappings")
+local TokenMap = require("parsers.board_data.lex.token_mappings")
 
 local Lexer = {}
 

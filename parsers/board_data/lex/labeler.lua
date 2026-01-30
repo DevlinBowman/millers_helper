@@ -1,4 +1,4 @@
--- parsers/board_data/labeler.lua
+-- parsers/board_data/lex/labeler.lua
 --
 -- Shallow contextual labeling (non-consuming)
 -- PURPOSE:
@@ -7,7 +7,7 @@
 --   • Labels are hints, not meaning
 --   • NO consumption, NO reduction, NO board logic
 
-local TokenMap = require("parsers.board_data.token_mappings")
+local TokenMap = require("parsers.board_data.lex.token_mappings")
 
 local Labeler = {}
 

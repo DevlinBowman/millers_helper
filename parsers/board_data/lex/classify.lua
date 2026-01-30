@@ -1,4 +1,4 @@
--- parsers/board_data/classify.lua
+-- parsers/board_data/lex/classify.lua
 --
 -- Context-free intrinsic classification
 -- PURPOSE:
@@ -7,7 +7,7 @@
 --   • NO consumption
 --   • NO parsing or reduction
 
-local TokenMap = require("parsers.board_data.token_mappings")
+local TokenMap = require("parsers.board_data.lex.token_mappings")
 
 local Classify = {}
 

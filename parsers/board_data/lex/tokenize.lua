@@ -1,4 +1,4 @@
--- parsers/board_data/tokenize.lua
+-- parsers/board_data/lex/tokenize.lua
 --
 -- Tokenization facade
 -- PURPOSE:
@@ -9,11 +9,11 @@
 --       3) Labeler (contextual labels)
 --   • Provide inspection formatting helpers
 
-local TokenMap  = require("parsers.board_data.token_mappings")
-local Lexer     = require("parsers.board_data.lexer")
-local Classify  = require("parsers.board_data.classify")
-local Labeler   = require("parsers.board_data.labeler")
-local ReduceFraction = require("parsers.board_data.reduce_fractional_number")
+local TokenMap  = require("parsers.board_data.lex.token_mappings")
+local Lexer     = require("parsers.board_data.lex.lexer")
+local Classify  = require("parsers.board_data.lex.classify")
+local Labeler   = require("parsers.board_data.lex.labeler")
+local ReduceFraction = require("parsers.board_data.lex.reduce_fractional_number")
 
 local Tokenize = {}
 
