@@ -5,10 +5,11 @@ local FromLines = require("ingestion.normalization.from_lines")
 local BoardRec  = require("ingestion.normalization.reconcile_board")
 local Hydrate   = require("ingestion.hydrate.board")
 
-local Pipeline = {}
+local Pipeline  = {}
 
-function Pipeline.run_file(path, cfg)
-    cfg = cfg or {}
+function Pipeline.run_file(path, opts, debug_opts)
+    opts = opts or {}
+    debug_opts = debug_opts or {}
 
     -- READ
     local raw, err = Read.read(path)
@@ -20,12 +21,33 @@ function Pipeline.run_file(path, cfg)
     -- TEXT INPUT (raw lines)
     -- ----------------------------
     if raw.kind == "lines" then
-        -- TEMP: verification-only parser
-        records = FromLines.run(raw)
+        -- run text parser (capture may be attached)
+        records = FromLines.run(raw, {
+            capture = debug_opts.capture
+        })
 
-        -- IMPORTANT:
-        -- stop here until a real text→board parser exists
-        return records, nil
+        -- ------------------------------------------------------------
+        -- NORMAL MODE: filter + hydrate
+        -- ------------------------------------------------------------
+        local filtered = {
+            kind = "records",
+            data = {},
+            meta = records.meta,
+        }
+
+        for _, rec in ipairs(records.data) do
+            if rec.base_h and rec.base_w and rec.l then
+                filtered.data[#filtered.data + 1] = rec
+            end
+        end
+
+        -- nothing valid to hydrate
+        if #filtered.data == 0 then
+            return records, nil
+        end
+
+        local board_specs = BoardRec.run(filtered)
+        return Hydrate.boards(board_specs), nil
     end
 
     -- ----------------------------

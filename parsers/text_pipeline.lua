@@ -65,15 +65,35 @@ end
 local function build_ingestion_record(line)
     local out = {}
 
+    -- ------------------------------------------------------------
+    -- Structural fields (authoritative, from resolver)
+    -- ------------------------------------------------------------
     local r = line._resolved or {}
-    if r.h   ~= nil then out.h   = r.h end
-    if r.w   ~= nil then out.w   = r.w end
-    if r.l   ~= nil then out.l   = r.l end
-    if r.ct  ~= nil then out.ct  = r.ct end
+    if r.h ~= nil then out.base_h = r.h end
+    if r.w ~= nil then out.base_w = r.w end
+    if r.l ~= nil then out.l = r.l end
+    if r.ct ~= nil then out.ct = r.ct end
     if r.tag ~= nil then out.tag = r.tag end
 
-    -- Tail passthrough (authoritative user data):
-    -- Keep only non-internal keys from the preprocess record.
+    -- ------------------------------------------------------------
+    -- Resolved tail claims → promoted fields
+    -- Mirrors CSV normalization behavior
+    -- ------------------------------------------------------------
+    for _, claim in ipairs(line._picked or {}) do
+        local field = claim.field
+        local value = claim.value
+
+        if field
+            and value ~= nil
+            and out[field] == nil
+        then
+            out[field] = value
+        end
+    end
+
+    -- ------------------------------------------------------------
+    -- Raw tail passthrough (explicit key=value lines, metadata)
+    -- ------------------------------------------------------------
     for k, v in pairs(line) do
         if type(k) == "string"
             and not k:match("^_")
@@ -91,13 +111,18 @@ end
 -- Public API
 ----------------------------------------------------------------
 
+
 ---@param lines string[]
----@param opts table|nil -- { debug = boolean }
----@return table -- { kind="records", data=..., meta=..., diagnostic?, debug? }
+---@param opts table|nil -- { capture = Capture? }
+---@return table -- { kind="records", data=..., meta=..., diagnostic? }
 function TextPipeline.run(lines, opts)
     opts = opts or {}
 
-    -- Run internal pipeline (produces inspection artifacts per line)
+    local Capture = require("parsers.text_pipeline.capture")
+
+    -- ------------------------------------------------------------
+    -- Run internal pipeline (produces full parser state per line)
+    -- ------------------------------------------------------------
     local pipeline_out = InternalPipeline.run(lines, opts)
 
     assert(
@@ -108,21 +133,22 @@ function TextPipeline.run(lines, opts)
 
     local line_records = pipeline_out.data
 
-    -- Gate into output tiers
+    -- ------------------------------------------------------------
+    -- Gate into canonical output (NO behavior change)
+    -- ------------------------------------------------------------
     local data       = {}
     local diagnostic = {}
-    local debug      = nil
-
-    if opts.debug then
-        debug = {}
-    end
 
     for i, line in ipairs(line_records) do
-        data[i]       = build_ingestion_record(line)
+        -- canonical ingestion record
+        data[i] = build_ingestion_record(line)
+
+        -- stable diagnostics
         diagnostic[i] = build_diagnostic(line)
 
-        if opts.debug then
-            debug[i] = line
+        -- OPTIONAL: capture full internal parser state
+        if opts.capture then
+            Capture.record(opts.capture, i, line)
         end
     end
 
@@ -136,13 +162,7 @@ function TextPipeline.run(lines, opts)
         },
     }
 
-    -- Ensure meta.count stays correct for canonical records
-    result.meta = result.meta or {}
     result.meta.count = #data
-
-    if opts.debug then
-        result.debug = debug
-    end
 
     return result
 end

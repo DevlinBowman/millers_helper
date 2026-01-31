@@ -1,20 +1,17 @@
-local I         = require('inspector')
-local Adapter   = require("ingestion.adapter.readfile")
-local Writer    = require("file_handler")
-local Serialize = require("core.board.serialize")
+local Capture = require("parsers.text_pipeline.capture")
+local I       = require("inspector")
+local Adapter = require("ingestion.adapter.readfile")
 
--- local result = assert(Adapter.ingest("tests/data_format/old_sheet.csv"))
--- assert(result.kind == "boards")
--- I.print(result)
+local cap = Capture.new()
 
+local boards = assert(Adapter.ingest(
+    "tests/data_format/input.txt",
+    {},
+    { capture = cap }
+))
 
-local data = assert(Adapter.ingest("tests/data_format/input.txt"))
-local inspect_opts = { ignore_keys = {'_tokens', '_chunks', '_claims'}}
--- I.print(data, inspect_opts)
+-- ingestion result (unchanged)
+I.print(boards)
 
-I.print(data)
-
-
--- local table_data = Serialize.boards_to_table(result.data)
-
--- Writer.write("boards.csv", "table", table_data)
+-- FULL parser state for line 1
+I.print(cap.lines[1])
