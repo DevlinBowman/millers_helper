@@ -1,17 +1,16 @@
-local Capture = require("parsers.text_pipeline.capture")
+-- main.lua
+--
+-- Application entry point
+-- Normal execution stays clean.
+-- Inspection is one-line, module-targeted, and disposable.
+
 local I       = require("inspector")
+local View    = require("debug.view")
 local Adapter = require("ingestion.adapter.readfile")
 
-local cap = Capture.new()
+local INPUT = "tests/data_format/input.txt"
 
-local boards = assert(Adapter.ingest(
-    "tests/data_format/input.txt",
-    {},
-    { capture = cap }
-))
+----------------------------------------------------------------
 
--- ingestion result (unchanged)
+local boards = assert(Adapter.ingest(INPUT))
 I.print(boards)
-
--- FULL parser state for line 1
-I.print(cap.lines[1])
