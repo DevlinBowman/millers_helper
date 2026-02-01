@@ -16,6 +16,7 @@
 --   • No parser artifacts escape ingestion
 
 local Reader    = require("ingestion_v2.reader")
+local Hygiene   = require("ingestion_v2.record_hygiene")
 local Builder   = require("ingestion_v2.record_builder")
 local Premap    = require("ingestion_v2.record_board_dimension_premap")
 local Validator = require("ingestion_v2.record_validator")
@@ -100,47 +101,38 @@ function Adapter.ingest(path, opts)
     ----------------------------------------------------------------
     -- Stage 2: Record-by-record processing
     ----------------------------------------------------------------
-    for index, raw in ipairs(records.data) do
-        ----------------------------------------------------------------
-        -- 2a) Strip parser internals
-        ----------------------------------------------------------------
-        local record = Builder.build(raw)
+for index, raw in ipairs(records.data) do
+    ------------------------------------------------------------
+    -- 2a) Hygiene (silent, mechanical)
+    ------------------------------------------------------------
+    Hygiene.apply(raw)
 
-        ----------------------------------------------------------------
-        -- 2b) PRE-MAP BOARD DIMENSIONS (critical fix)
-        --     Ensures base_h / base_w / l / ct / tag exist
-        ----------------------------------------------------------------
-        Premap.apply(record)
+    ------------------------------------------------------------
+    -- 2b) Builder + dimension pre-map
+    ------------------------------------------------------------
+    local record = Builder.build(raw)
+    Premap.apply(record)
+    local head = record.head
 
-        local head = record.head
+    ------------------------------------------------------------
+    -- 2c) Validation signals (NON-FATAL)
+    ------------------------------------------------------------
+    push_all(signals.errors,   Validator.check_missing_dimensions(record, index, head))
+    push_all(signals.warnings, Validator.check_unmapped_fields(record, index, head, extra_allowed))
 
-        ----------------------------------------------------------------
-        -- 2c) Validation signals (NON-FATAL)
-        ----------------------------------------------------------------
-        push_all(
-            signals.errors,
-            Validator.check_missing_dimensions(record, index, head)
-        )
-
-        push_all(
-            signals.warnings,
-            Validator.check_unmapped_fields(record, index, head, extra_allowed)
-        )
-
-        ----------------------------------------------------------------
-        -- 2d) Attempt authoritative board construction
-        ----------------------------------------------------------------
-        -- If missing dims are known, skip Board.new() to avoid noise
-        if not has_error_for_index(signals.errors, index, "board.missing_required_dimensions") then
-            local ok, board_or_err = pcall(Board.new, record)
-            if ok then
-                boards[#boards + 1] = board_or_err
-            else
-                signals.errors[#signals.errors + 1] =
-                    classify_board_failure(record, index, head, board_or_err)
-            end
+    ------------------------------------------------------------
+    -- 2d) Attempt authoritative board construction
+    ------------------------------------------------------------
+    if not has_error_for_index(signals.errors, index, "board.missing_required_dimensions") then
+        local ok, board_or_err = pcall(Board.new, record)
+        if ok then
+            boards[#boards + 1] = board_or_err
+        else
+            signals.errors[#signals.errors + 1] =
+                classify_board_failure(record, index, head, board_or_err)
         end
     end
+end
 
     ----------------------------------------------------------------
     -- Final, explicit ingestion result

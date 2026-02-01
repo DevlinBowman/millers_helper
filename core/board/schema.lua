@@ -48,7 +48,7 @@ Schema.fields = {
     -- PRICING
     -- ========================
     bf_price = {
-        aliases = { "bf_price", "BFPrice", "Price/BF", "price_per_bf" },
+        aliases = { "bf_price", "BFPrice", "Price/BF", "price/bf", "price_per_bf" },
         coerce  = tonumber,
     },
 
@@ -84,7 +84,7 @@ Schema.fields = {
     },
 
     job_number = {
-        aliases = { "job_number", "Job Number", "job", "Job" },
+        aliases = { "job_number", "Job Number", "job", "Job", 'job number' },
         coerce  = tostring,
     },
 

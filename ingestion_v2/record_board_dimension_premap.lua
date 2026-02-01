@@ -1,19 +1,18 @@
 -- ingestion_v2/record_board_dimension_premap.lua
 --
 -- Responsibility:
---   Pre-map and numerically normalize board dimension fields
---   required by Board.new():
+--   Pre-map and normalize board dimension fields required by Board.new():
 --
 --     base_h, base_w, l, ct, tag
 --
--- This is a MECHANICAL, LOSSLESS normalization step.
+-- This is a MECHANICAL, DOMAIN-SCOPED normalization step.
 --
 -- Guarantees:
 --   • Deterministic
 --   • No inference
 --   • No parsing (e.g. "2x4" is INVALID)
 --   • Numeric-only coercion via tonumber
---   • Invalid values become nil
+--   • Field-scoped value normalization
 --   • No validation
 --   • No side effects beyond key assignment
 --
@@ -30,49 +29,46 @@ local Premap = {}
 
 local KEYMAP = {
     -- HEIGHT / THICKNESS
-    H         = "base_h",
-    h         = "base_h",
-    Height    = "base_h",
-    height    = "base_h",
-    Thickness = "base_h",
-    thickness = "base_h",
-    T         = "base_h",
+    h           = "base_h",
+    height      = "base_h",
+    thickness   = "base_h",
+    t           = "base_h",
 
     -- WIDTH
-    W       = "base_w",
     w       = "base_w",
-    Width   = "base_w",
     width   = "base_w",
 
     -- LENGTH
-    L       = "l",
     l       = "l",
-    Length  = "l",
-    length  = "l",
-    Len     = "l",
     len     = "l",
+    length  = "l",
 
     -- COUNT
-    CT    = "ct",
-    Ct    = "ct",
-    ct    = "ct",
-    Count = "ct",
-    count = "ct",
-    Qty   = "ct",
-    qty   = "ct",
+    ct      = "ct",
+    count   = "ct",
+    qty     = "ct",
+    quantity= "ct",
 
-    -- TAG (string only)
-    Tag     = "tag",
+    -- TAG / NOMINAL
     tag     = "tag",
-    Nominal = "tag",
-    ["N/F"] = "tag",
+    flag    = "tag",
+    nominal = "tag",
+    ["n/f"] = "tag",
 }
+
+----------------------------------------------------------------
+-- Field-scoped normalization rules
+----------------------------------------------------------------
 
 local NUMERIC_FIELDS = {
     base_h = true,
     base_w = true,
     l      = true,
     ct     = true,
+}
+
+local LOWERCASE_FIELDS = {
+    tag = true,
 }
 
 ----------------------------------------------------------------
@@ -84,24 +80,39 @@ local NUMERIC_FIELDS = {
 function Premap.apply(record)
     assert(type(record) == "table", "record_board_dimension_premap.apply(): record must be table")
 
-    -- Snapshot keys to avoid mutation hazards
+    -- snapshot keys to avoid mutation hazards
     local keys = {}
     for k in pairs(record) do
-        keys[#keys + 1] = k
+        if type(k) == "string" then
+            keys[#keys + 1] = k
+        end
     end
 
+    ----------------------------------------------------------------
+    -- Key canonicalization
+    ----------------------------------------------------------------
     for _, key in ipairs(keys) do
-        local canonical = KEYMAP[key]
+        local canonical = KEYMAP[key:lower()]
         if canonical and record[canonical] == nil then
             record[canonical] = record[key]
         end
     end
 
+    ----------------------------------------------------------------
     -- Numeric normalization (NO parsing)
+    ----------------------------------------------------------------
     for field in pairs(NUMERIC_FIELDS) do
         if record[field] ~= nil then
-            local n = tonumber(record[field])
-            record[field] = n  -- nil if invalid, numeric if valid
+            record[field] = tonumber(record[field]) -- nil if invalid
+        end
+    end
+
+    ----------------------------------------------------------------
+    -- Field-scoped value normalization
+    ----------------------------------------------------------------
+    for field in pairs(LOWERCASE_FIELDS) do
+        if type(record[field]) == "string" then
+            record[field] = record[field]:lower()
         end
     end
 
