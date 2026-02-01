@@ -16,7 +16,7 @@ local LEDGER_PATH = "data/ledger.lua"
 local ingest_result = assert(Adapter.ingest(INPUT))
 
 -- Always show a clean summary
-Report.print(ingest_result)
+Report.print(ingest_result, { compact = true })
 
 -- Boards only (authoritative payload)
 local boards = ingest_result.boards.data

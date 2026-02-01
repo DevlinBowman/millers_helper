@@ -164,6 +164,15 @@ function Board.new(spec)
     end
 
     ------------------------------------------------------------
+    -- 3.25) Strip derived inputs (schema-driven)
+    ------------------------------------------------------------
+    for field, def in pairs(Schema.fields) do
+        if def.role == Schema.ROLES.DERIVED then
+            board[field] = nil
+        end
+    end
+
+    ------------------------------------------------------------
     -- 3.5) Apply schema coercions (authoritative)
     ------------------------------------------------------------
     apply_schema_coercions(board)

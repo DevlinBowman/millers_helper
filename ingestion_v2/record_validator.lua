@@ -40,7 +40,6 @@ local function resolve(record, canonical)
     return nil
 end
 
---- Schema-aware dimension extraction (no mutation)
 local function resolved_dimensions(record)
     return {
         base_h = resolve(record, "base_h"),
@@ -49,7 +48,6 @@ local function resolved_dimensions(record)
     }
 end
 
---- Check numeric sanity WITHOUT coercion
 local function invalid_number(v)
     if v == nil then return false end
     local n = tonumber(v)
@@ -57,37 +55,23 @@ local function invalid_number(v)
 end
 
 ----------------------------------------------------------------
--- Missing / invalid dimensions (pre-board diagnostics)
+-- Missing dimensions
 ----------------------------------------------------------------
 
----@param record table
----@return string[] missing
 function Validator.missing_dimensions(record)
     local dims = resolved_dimensions(record)
     local missing = {}
 
-    if dims.base_h == nil then
-        missing[#missing + 1] = "base_h"
-    end
-    if dims.base_w == nil then
-        missing[#missing + 1] = "base_w"
-    end
-    if dims.l == nil then
-        missing[#missing + 1] = "l"
-    end
+    if dims.base_h == nil then missing[#missing+1] = "base_h" end
+    if dims.base_w == nil then missing[#missing+1] = "base_w" end
+    if dims.l == nil then missing[#missing+1] = "l" end
 
     return missing
 end
 
----@param record table
----@param index number
----@param head string|nil
----@return table[] signals
 function Validator.check_missing_dimensions(record, index, head)
     local missing = Validator.missing_dimensions(record)
-    if #missing == 0 then
-        return {}
-    end
+    if #missing == 0 then return {} end
 
     return {
         {
@@ -95,21 +79,21 @@ function Validator.check_missing_dimensions(record, index, head)
             code    = "board.missing_required_dimensions",
             index   = index,
             head    = head,
-            missing = missing,
-            message = "Missing required board dimensions: " .. table.concat(missing, ", "),
+
+            role    = "authoritative",
+            action  = "missing",
+            key     = table.concat(missing, ", "),
+
+            message = "Missing required board dimensions",
             note    = "Dimensions may exist under aliases. Verify headers or extend schema aliases.",
         }
     }
 end
 
 ----------------------------------------------------------------
--- Invalid (non-positive / non-numeric) dimensions
+-- Invalid dimensions
 ----------------------------------------------------------------
 
----@param record table
----@param index number
----@param head string|nil
----@return table[] signals
 function Validator.check_invalid_dimensions(record, index, head)
     local dims = resolved_dimensions(record)
     local bad = {}
@@ -118,9 +102,7 @@ function Validator.check_invalid_dimensions(record, index, head)
     if invalid_number(dims.base_w) then bad[#bad+1] = "base_w" end
     if invalid_number(dims.l)      then bad[#bad+1] = "l" end
 
-    if #bad == 0 then
-        return {}
-    end
+    if #bad == 0 then return {} end
 
     return {
         {
@@ -128,56 +110,100 @@ function Validator.check_invalid_dimensions(record, index, head)
             code    = "board.invalid_dimension_value",
             index   = index,
             head    = head,
-            fields  = bad,
-            message = "Invalid board dimension values: " .. table.concat(bad, ", "),
+
+            role    = "authoritative",
+            action  = "invalid",
+            key     = table.concat(bad, ", "),
+
+            message = "Invalid board dimension values",
             note    = "Dimensions must be numeric and > 0 after alias resolution.",
         }
     }
 end
 
 ----------------------------------------------------------------
--- Unmapped fields (schema + alias aware)
+-- Derived-field overrides
 ----------------------------------------------------------------
 
-local function build_allowset(extra_allowed)
-    local allow = { head = true }
+function Validator.check_derived_field_overrides(record, index, head)
+    local infos = {}
 
-    if type(extra_allowed) == "table" then
-        for _, k in ipairs(extra_allowed) do
-            if type(k) == "string" then
-                allow[k] = true
+    for k, v in pairs(record) do
+        if type(k) == "string" then
+            local canonical = Schema.alias_index[k] or k
+            local def = Schema.fields[canonical]
+
+            if def and def.role == Schema.ROLES.DERIVED and v ~= nil then
+                infos[#infos + 1] = {
+                    level   = "info",
+                    code    = "ingest.derived_field_overridden",
+                    index   = index,
+                    head    = head,
+
+                    role          = "derived",
+
+                    key           = canonical,
+                    input_key     = k,
+                    input_value   = v,
+
+                    action        = "recomputed",
+
+                    outcome_key   = canonical,
+                    outcome_value = nil, -- patched later
+
+                    message = "Derived field overridden",
+                    note    = "This field is calculated internally by the board system. Input value was ignored.",
+                }
             end
         end
     end
 
+    return infos
+end
+
+----------------------------------------------------------------
+-- Unmapped fields
+----------------------------------------------------------------
+
+local function build_allowset(extra_allowed)
+    local allow = { head = true }
+    if type(extra_allowed) == "table" then
+        for _, k in ipairs(extra_allowed) do
+            allow[k] = true
+        end
+    end
     return allow
 end
 
----@param record table
----@param index number
----@param head string|nil
----@param extra_allowed string[]|nil
----@return table[] signals
 function Validator.check_unmapped_fields(record, index, head, extra_allowed)
     local warnings = {}
     local allow = build_allowset(extra_allowed)
 
     for k, v in pairs(record) do
-        if type(k) == "string"
-            and not allow[k]
-            and not Schema.fields[k]
-            and not Schema.alias_index[k]
-        then
-            warnings[#warnings + 1] = {
-                level   = "warning",
-                code    = "ingest.unmapped_field",
-                index   = index,
-                head    = head,
-                field   = k,
-                value   = v,
-                message = "Field could not be mapped to board schema",
-                note    = "This field was ignored during board construction. If it matters, add an alias or schema field.",
-            }
+        if type(k) == "string" and not allow[k] then
+            local canonical = Schema.alias_index[k]
+            if not canonical and not Schema.fields[k] then
+                warnings[#warnings + 1] = {
+                    level   = "warning",
+                    code    = "ingest.unmapped_field",
+                    index   = index,
+                    head    = head,
+
+                    role          = "unknown",
+
+                    key           = k,
+                    input_key     = k,
+                    input_value   = v,
+
+                    action        = "ignored",
+
+                    outcome_key   = k,
+                    outcome_value = nil,
+
+                    message = "Field could not be mapped to board schema",
+                    note    = "This field was ignored during board construction.",
+                }
+            end
         end
     end
 
