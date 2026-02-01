@@ -1,11 +1,11 @@
 -- ledger/review.lua
 --
--- Manual review / staging (future).
+-- Optional manual review hooks.
 
 local Review = {}
 
 function Review.needs_review(fact)
-    return fact.data.use == nil
+    return fact.board.purpose == nil
 end
 
 return Review

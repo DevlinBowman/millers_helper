@@ -1,64 +1,74 @@
 -- ledger/ingest.lua
 --
--- Ingest sparse normalized records into the ledger.
+-- Ingest Boards into the ledger.
+-- Idempotent by content_key.
 
 local Identity = require("ledger.identity")
 
 local Ingest = {}
 
-local function gen_ingestion_id()
-    return os.date("!%Y-%m-%dT%H:%M:%SZ") .. "-" .. tostring(math.random(1000, 9999))
-end
+----------------------------------------------------------------
+-- Helpers
+----------------------------------------------------------------
 
 local function gen_fact_id(n)
     return string.format("fact-%06d", n)
 end
 
-local function build_seen_set(ledger)
+local function build_seen_index(ledger)
     local seen = {}
-    for _, f in ipairs(ledger.facts) do
-        seen[f.content_key] = true
+    for _, fact in ipairs(ledger.facts) do
+        seen[fact.content_key] = true
     end
     return seen
 end
 
----@param ledger table
----@param records { kind:"records", data:table[], meta:table }
----@param source table|nil
----@return table report
-function Ingest.run(ledger, records, source)
-    assert(records.kind == "records", "expected kind='records'")
+----------------------------------------------------------------
+-- Public API
+----------------------------------------------------------------
 
-    local ingestion_id = gen_ingestion_id()
+--- Ingest boards into ledger
+---
+--- @param ledger table
+--- @param boards { kind:"boards", data:table[] }
+--- @param source { path:string }
+--- @return table report
+function Ingest.run(ledger, boards, source)
+    assert(type(ledger) == "table", "ledger required")
+    assert(boards.kind == "boards", "expected kind='boards'")
+    assert(type(source) == "table" and source.path, "source.path required")
+
+        -- Normalize source contract
+    local src = {
+        path = source.path or source.source_path,
+    }
+    assert(src.path, "source.path (or source_path) required")
+
     local now = os.date("!%Y-%m-%dT%H:%M:%SZ")
-
-    local seen = build_seen_set(ledger)
+    local seen = build_seen_index(ledger)
     local next_id = #ledger.facts + 1
 
     local report = {
-        ingestion_id = ingestion_id,
-        rows_seen = #records.data,
+        rows_seen = #boards.data,
         added = 0,
         skipped = 0,
     }
 
-    for i, rec in ipairs(records.data) do
-        local key = Identity.compute(rec)
+    for i, board in ipairs(boards.data) do
+        local key = Identity.compute(board, source)
 
         if seen[key] then
             report.skipped = report.skipped + 1
         else
             ledger.facts[#ledger.facts + 1] = {
-                fact_id      = gen_fact_id(next_id),
-                ingestion_id = ingestion_id,
-                content_key  = key,
-                data         = rec,
-                source       = {
-                    input = records.meta and records.meta.input,
-                    line  = i,
-                    extra = source,
+                fact_id     = gen_fact_id(next_id),
+                content_key = key,
+                board       = board,
+                source      = {
+                    path = source.path,
+                    line = i,
                 },
-                ingested_at  = now,
+                ingested_at = now,
             }
 
             seen[key] = true
@@ -67,13 +77,12 @@ function Ingest.run(ledger, records, source)
         end
     end
 
-    ledger.ingestions[ingestion_id] = {
-        started_at  = now,
-        completed_at = os.date("!%Y-%m-%dT%H:%M:%SZ"),
-        rows_seen   = report.rows_seen,
-        added       = report.added,
-        skipped     = report.skipped,
-        source      = source,
+    ledger.ingestions[#ledger.ingestions + 1] = {
+        at = now,
+        source = source,
+        rows_seen = report.rows_seen,
+        added = report.added,
+        skipped = report.skipped,
     }
 
     return report

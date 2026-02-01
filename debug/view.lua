@@ -86,6 +86,10 @@ function View.io(path)
     return View.run("io", path)
 end
 
+function View.text(path, opts)
+    return View.run("text", path, opts)
+end
+
 function View.records(path)
     return View.run("records", path)
 end

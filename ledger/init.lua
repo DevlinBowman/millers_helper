@@ -1,12 +1,13 @@
 -- ledger/init.lua
 --
--- Public ledger module entrypoint
+-- Public entrypoint
 
 return {
-    store  = require("ledger.store"),
-    ingest = require("ledger.ingest"),
-    query  = require("ledger.query"),
-    mutate = require("ledger.mutate"),
-    review = require("ledger.review"),
-    id     = require("ledger.identity"),
+    ledger   = require("ledger.ledger"),
+    store    = require("ledger.store"),
+    ingest   = require("ledger.ingest"),
+    identity = require("ledger.identity"),
+    query    = require("ledger.query"),
+    review   = require("ledger.review"),
+    inspect  = require("ledger.inspect"),
 }

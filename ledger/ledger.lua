@@ -1,16 +1,15 @@
 -- ledger/ledger.lua
 --
 -- Authoritative ledger shape.
--- Sparse, append-only facts with strong provenance.
+-- Append-only, immutable facts.
 
 local Ledger = {}
 
 ---@class LedgerFact
 ---@field fact_id string
----@field ingestion_id string
 ---@field content_key string
----@field data table            -- sparse flat data
----@field source table          -- provenance
+---@field board table
+---@field source table
 ---@field ingested_at string
 
 ---@class Ledger

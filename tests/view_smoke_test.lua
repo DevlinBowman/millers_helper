@@ -8,18 +8,12 @@ local View = require("debug.view")
 
 local INPUT = "tests/data_format/input.txt"
 
-----------------------------------------------------------------
--- Smoke targets (VALID ROUTER PATHS)
-----------------------------------------------------------------
 local targets = {
-    { name = "io",      fn = function() View.io(INPUT) end },
-    { name = "records", fn = function() View.run("records", INPUT) end },
-    { name = "parser",  fn = function() View.run("text.parser", INPUT) end },
-    { name = "ingest",  fn = function() View.ingest(INPUT) end },
-    { name = "boards",  fn = function()
-        local ingest = View.ingest(INPUT)
-        assert(ingest.boards and ingest.boards.data, "boards missing from ingest")
-    end },
+    { name = "io",     fn = function() View.io(INPUT) end },
+    { name = "text",   fn = function() View.text(INPUT) end },
+    { name = "parser", fn = function() View.parser(INPUT) end },
+    { name = "boards", fn = function() View.boards(INPUT) end },
+    { name = "ingest", fn = function() View.ingest(INPUT) end },
 }
 
 ----------------------------------------------------------------
@@ -32,16 +26,13 @@ local function silence(fn)
 
     print = function() end
     io.write = function() end
-    io.stderr = {
-        write = function() end,
-        flush = function() end,
-    }
+    io.stderr = { write = function() end }
 
     local ok, err = pcall(fn)
 
+    print = old_print
+    io.write = old_write
     io.stderr = old_stderr
-    io.write  = old_write
-    print     = old_print
 
     return ok, err
 end

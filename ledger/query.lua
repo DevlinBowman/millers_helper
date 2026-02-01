@@ -1,4 +1,6 @@
 -- ledger/query.lua
+--
+-- Read-only helpers.
 
 local Query = {}
 
@@ -8,9 +10,9 @@ end
 
 function Query.where(ledger, predicate)
     local out = {}
-    for _, f in ipairs(ledger.facts) do
-        if predicate(f) then
-            out[#out + 1] = f
+    for _, fact in ipairs(ledger.facts) do
+        if predicate(fact) then
+            out[#out + 1] = fact
         end
     end
     return out
