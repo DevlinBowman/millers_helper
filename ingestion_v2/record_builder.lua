@@ -1,9 +1,6 @@
 -- ingestion_v2/record_builder.lua
---
--- Responsibility:
---   Convert parser output → clean record suitable for Board.new()
---   Strip ALL parser internals.
---   Preserve human fields (head, notes, etc.)
+
+local Schema = require("core.board.schema")
 
 local Builder = {}
 
@@ -18,7 +15,11 @@ function Builder.build(record)
 
     for k, v in pairs(record) do
         if not is_internal_key(k) then
-            out[k] = v
+            -- keep only canonical schema fields or aliases
+            local canonical = Schema.alias_index[k] or k
+            if Schema.fields[canonical] then
+                out[canonical] = v
+            end
         end
     end
 
