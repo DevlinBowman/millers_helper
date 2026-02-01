@@ -1,7 +1,7 @@
 -- ledger/inspect.lua
 --
 -- Read-only inspection helpers for the ledger.
--- No mutation. No inference.
+-- No mutation. No inference beyond ledger state.
 
 local Inspect = {}
 
@@ -71,11 +71,11 @@ function Inspect.fact(ledger, index)
     if not fact then return nil end
 
     return {
-        fact_id     = fact.fact_id,
-        content_key= short(fact.content_key, 120),
-        ingested_at= fact.ingested_at,
-        source     = fact.source,
-        board      = fact.board,
+        fact_id      = fact.fact_id,
+        content_key = short(fact.content_key, 120),
+        ingested_at = fact.ingested_at,
+        source      = fact.source,
+        board       = fact.board,
     }
 end
 
@@ -88,35 +88,37 @@ end
 ---@return table[]
 function Inspect.by_source(ledger, path)
     local out = {}
+
     for _, fact in ipairs(ledger.facts) do
         if fact.source and fact.source.path == path then
             out[#out + 1] = fact
         end
     end
+
     return out
 end
 
 ----------------------------------------------------------------
--- Ingestion overview (diff-friendly)
+-- Ingestion overview (diff-friendly, ledger-only truth)
 ----------------------------------------------------------------
 
 ---@param ledger table
 ---@return table
 function Inspect.overview(ledger)
     local rows = {}
-    local total_facts = 0
+    local cumulative = 0
 
     for i, ingest in ipairs(ledger.ingestions or {}) do
-        total_facts = total_facts + (ingest.added or 0)
+        cumulative = cumulative + (ingest.added or 0)
 
         rows[#rows + 1] = {
-            index      = i,
-            at         = ingest.at,
-            source     = ingest.source and ingest.source.path,
-            rows_seen  = ingest.rows_seen,
-            added      = ingest.added,
-            skipped    = ingest.skipped,
-            total_facts_after = total_facts,
+            index       = i,
+            at          = ingest.at,
+            source      = ingest.source and ingest.source.path,
+            boards_seen = ingest.boards_seen,
+            added       = ingest.added,
+            skipped     = ingest.skipped,
+            total_facts_after = cumulative,
         }
     end
 
