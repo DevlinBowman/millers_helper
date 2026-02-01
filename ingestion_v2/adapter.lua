@@ -17,6 +17,7 @@
 
 local Reader    = require("ingestion_v2.reader")
 local Builder   = require("ingestion_v2.record_builder")
+local Premap    = require("ingestion_v2.record_board_dimension_premap")
 local Validator = require("ingestion_v2.record_validator")
 local Board     = require("core.board.board")
 
@@ -90,7 +91,6 @@ function Adapter.ingest(path, opts)
     }
 
     -- allowlist for “extra” record keys you explicitly tolerate
-    -- (so you don't get noise for human context fields)
     local extra_allowed = opts.allowed_extra_fields or {
         "note", "notes",
         "usage", "useage",
@@ -101,19 +101,36 @@ function Adapter.ingest(path, opts)
     -- Stage 2: Record-by-record processing
     ----------------------------------------------------------------
     for index, raw in ipairs(records.data) do
+        ----------------------------------------------------------------
+        -- 2a) Strip parser internals
+        ----------------------------------------------------------------
         local record = Builder.build(raw)
-        local head   = record.head
 
-        ------------------------------------------------------------
-        -- 2a) Validation signals (NON-FATAL)
-        ------------------------------------------------------------
-        push_all(signals.errors,   Validator.check_missing_dimensions(record, index, head))
-        push_all(signals.warnings, Validator.check_unmapped_fields(record, index, head, extra_allowed))
+        ----------------------------------------------------------------
+        -- 2b) PRE-MAP BOARD DIMENSIONS (critical fix)
+        --     Ensures base_h / base_w / l / ct / tag exist
+        ----------------------------------------------------------------
+        Premap.apply(record)
 
-        ------------------------------------------------------------
-        -- 2b) Attempt authoritative board construction
-        ------------------------------------------------------------
-        -- If missing dims are known, skip Board.new to avoid duplicate noise.
+        local head = record.head
+
+        ----------------------------------------------------------------
+        -- 2c) Validation signals (NON-FATAL)
+        ----------------------------------------------------------------
+        push_all(
+            signals.errors,
+            Validator.check_missing_dimensions(record, index, head)
+        )
+
+        push_all(
+            signals.warnings,
+            Validator.check_unmapped_fields(record, index, head, extra_allowed)
+        )
+
+        ----------------------------------------------------------------
+        -- 2d) Attempt authoritative board construction
+        ----------------------------------------------------------------
+        -- If missing dims are known, skip Board.new() to avoid noise
         if not has_error_for_index(signals.errors, index, "board.missing_required_dimensions") then
             local ok, board_or_err = pcall(Board.new, record)
             if ok then
@@ -127,11 +144,6 @@ function Adapter.ingest(path, opts)
 
     ----------------------------------------------------------------
     -- Final, explicit ingestion result
-    --
-    -- IMPORTANT:
-    -- Provide both:
-    --   • signals.errors/warnings (preferred structured shape)
-    --   • and top-level errors/warnings (compat for older code/report)
     ----------------------------------------------------------------
     local meta = {
         source_path    = path,
@@ -152,7 +164,7 @@ function Adapter.ingest(path, opts)
         -- preferred
         signals = signals,
 
-        -- compatibility / convenience (prevents "there is no info here")
+        -- compatibility / convenience
         errors   = signals.errors,
         warnings = signals.warnings,
 

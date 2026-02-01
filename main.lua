@@ -8,7 +8,9 @@ local Ledger  = require("ledger")
 local Store   = Ledger.store
 local Ingest  = Ledger.ingest
 
-local INPUT       = "tests/data_format/input.txt"
+local INPUT       = "tests/data_format/old_sheet.csv"
+
+-- local INPUT       = "tests/data_format/test_lumber.json"
 local LEDGER_PATH = "data/ledger.lua"
 
 local ingest_result = assert(Adapter.ingest(INPUT))
@@ -43,4 +45,4 @@ I.print(report)
 -- Filter by source file
 -- I.print(Ledger.inspect.by_source(ledger, "tests/data_format/input.txt"))
 --
-I.print(Ledger.inspect.overview(ledger))
+-- I.print(Ledger.inspect.overview(ledger))

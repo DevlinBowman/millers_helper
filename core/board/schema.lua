@@ -149,7 +149,7 @@ Schema.fields = {
     },
 
     notes = {
-        aliases = { "notes", "Notes", "note", "head" },
+        aliases = { "notes", "Notes", "note" },
         coerce  = tostring,
     },
 }
