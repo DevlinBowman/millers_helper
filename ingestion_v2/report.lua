@@ -107,35 +107,50 @@ end
 -- Format:
 -- [record#] [role] >> input_key input_val -> action -> outcome_key outcome_val
 
+----------------------------------------------------------------
+-- Compact formatting (table-like, bracketed)
+----------------------------------------------------------------
+-- Columns:
+-- [rec] [role] [input] [action] [outcome]
+
+local function pad(s, n)
+    s = tostring(s)
+    if #s >= n then return s end
+    return s .. string.rep(" ", n - #s)
+end
+
+local function fmt_kv(k, v)
+    if k == nil then return "[?]" end
+    if v == nil then
+        return "[ " .. tostring(k) .. " ]"
+    end
+    return "[ " .. tostring(k) .. " = " .. tostring(v) .. " ]"
+end
+
 local function print_compact_warnings(warnings)
     out("")
     out("Warnings (compact)")
+    out("--------------------------------------------------")
+    out("[rec] [role]     [input]                     [action]      [outcome]")
     out("--------------------------------------------------")
 
     for _, raw in ipairs(warnings) do
         local w = normalize_signal(raw)
 
-        local idx  = w.index or "?"
-        local role = w.role or "unknown"
-        local act  = w.action or "ignored"
+        local rec   = "[" .. tostring(w.index or "?") .. "]"
+        local role  = "[" .. tostring(w.role or "unknown") .. "]"
 
-        local lhs = tostring(w.input_key or "?")
-        if w.input_value ~= nil then
-            lhs = lhs .. " " .. tostring(w.input_value)
-        end
-
-        local rhs = tostring(w.outcome_key or (w.input_key or "?"))
-        if w.outcome_value ~= nil then
-            rhs = rhs .. " " .. tostring(w.outcome_value)
-        end
+        local input   = fmt_kv(w.input_key, w.input_value)
+        local action  = "[" .. tostring(w.action or "ignored") .. "]"
+        local outcome = fmt_kv(w.outcome_key or w.input_key, w.outcome_value)
 
         out(string.format(
-            "[%s] [%s] >> %s -> %s -> %s",
-            idx,
-            role,
-            lhs,
-            act,
-            rhs
+            "%s %s  %s  %s  %s",
+            pad(rec, 5),
+            pad(role, 10),
+            pad(input, 24),
+            pad(action, 14),
+            outcome
         ))
     end
 end
