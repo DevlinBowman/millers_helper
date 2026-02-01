@@ -5,8 +5,12 @@
 --   - Board is the universal ledger record.
 --   - Schema defines the authoritative field universe.
 --   - Board enforces invariants + derived fields only.
---   - Boards are DENSE: every schema field exists (nil if empty).
 --   - Unknown fields are preserved (lossless ingest).
+--
+-- NOTE:
+--   Lua tables cannot truly be "dense" with nil values.
+--   Schema density is enforced semantically via Schema.fields
+--   and accessors, not via physical key presence.
 
 local Label     = require("core.board.label")
 local Convert   = require("core.board.attr_conversion")
@@ -15,48 +19,94 @@ local Util      = require("core.board.utils.helpers")
 local Schema    = require("core.board.schema")
 
 ---@class Board
-local Board = {}
-Board.__index = Board
+---@field base_h number
+---@field base_w number
+---@field h number
+---@field w number
+---@field l number
+---@field ct number
+---@field tag string
+---@field label string
+---@field id string
+---@field _bf number
+---@field _bf_per_lf number
+---@field _ea_price number|nil
+---@field n_delta_vol number|nil
+local Board     = {}
+Board.__index   = Board
 
 ----------------------------------------------------------------
 -- Invariant helpers
 ----------------------------------------------------------------
 
+---@param v any
+---@param name string
 local function assert_posnum(v, name)
     assert(type(v) == "number" and v > 0, name .. " must be > 0")
 end
 
+---@param spec table
+---@return number base_h
+---@return number base_w
 local function resolve_declared_dims(spec)
     local base_h = spec.base_h or spec.h
     local base_w = spec.base_w or spec.w
+
     assert_posnum(base_h, "base_h")
     assert_posnum(base_w, "base_w")
+
     return base_h, base_w
 end
 
 ----------------------------------------------------------------
--- Derived cache computation
+-- Schema coercion (authoritative)
 ----------------------------------------------------------------
 
+---@param board table
+local function apply_schema_coercions(board)
+    for field, def in pairs(Schema.fields) do
+        local value = board[field]
+        if value ~= nil and def.coerce then
+            local coerced = def.coerce(value)
+
+            -- Hard failure: schema says this must be coercible
+            if coerced == nil and value ~= nil then
+                error(string.format(
+                    "Board.new(): failed to coerce field '%s' (value=%s)",
+                    field,
+                    tostring(value)
+                ), 3)
+            end
+
+            board[field] = coerced
+        end
+    end
+end
+
+----------------------------------------------------------------
+-- Derived cache computation (authoritative)
+----------------------------------------------------------------
+
+---@param board Board
 local function recalc_cached(board)
-    -- working face
+    -- Resolve working face (ALWAYS)
     board.h, board.w = Normalize.face_from_tag(
         board.base_h,
         board.base_w,
         board.tag
     )
 
-    -- physicals
+    -- Physical quantities
     board._bf        = Convert.bf(board)
     board._bf_per_lf = Convert.bf_per_lf(board)
 
-    -- pricing
-    board._ea_price = nil
+    -- Pricing (derived, optional)
+    board._ea_price  = nil
     if board.bf_price ~= nil then
         board._ea_price = Convert.bf_price_to_ea_price(board)
     end
 
-    -- nominal delta
+    -- Nominal delta (only meaningful for nominal boards)
     board.n_delta_vol = nil
     if board.tag == "n" then
         local nominal = Normalize.nominal_bf(
@@ -64,14 +114,15 @@ local function recalc_cached(board)
             board.base_w,
             board.l
         )
-        board.n_delta_vol = nominal > 0
+
+        board.n_delta_vol = (nominal > 0)
             and Util.round_number(board._bf / nominal, 2)
             or 1.0
     end
 end
 
 ----------------------------------------------------------------
--- Constructor
+-- Constructor (single authoritative boundary)
 ----------------------------------------------------------------
 
 ---@param spec table
@@ -86,36 +137,45 @@ function Board.new(spec)
     local board = {}
 
     ------------------------------------------------------------
-    -- 1) Initialize dense schema frame
+    -- 1) Initialize schema universe (semantic density)
     ------------------------------------------------------------
+    -- NOTE: assigning nil does not create physical keys;
+    -- this establishes intent, not runtime presence.
     for field in pairs(Schema.fields) do
         board[field] = nil
     end
 
     ------------------------------------------------------------
-    -- 2) Required declared invariants
+    -- 2) Declared invariants (authoritative inputs)
     ------------------------------------------------------------
     board.base_h = base_h
     board.base_w = base_w
     board.l      = spec.l
-    board.ct     = tonumber(spec.ct or 1)
-    board.tag    = spec.tag
+    board.ct     = tonumber(spec.ct) or 1
+
+    -- Default interpretation: NOMINAL
+    board.tag    = spec.tag or "n"
 
     ------------------------------------------------------------
-    -- 3) Copy all provided data (schema or not)
+    -- 3) Copy all provided data (lossless ingest)
     ------------------------------------------------------------
     for k, v in pairs(spec) do
         board[k] = v
     end
 
     ------------------------------------------------------------
-    -- 4) Identity (derived, authoritative)
+    -- 3.5) Apply schema coercions (authoritative)
+    ------------------------------------------------------------
+    apply_schema_coercions(board)
+
+    ------------------------------------------------------------
+    -- 4) Identity (physical snapshot)
     ------------------------------------------------------------
     board.label = Label.generate(board)
     board.id    = board.label
 
     ------------------------------------------------------------
-    -- 5) Derived caches
+    -- 5) Derived caches (always)
     ------------------------------------------------------------
     recalc_cached(board)
 
@@ -123,7 +183,7 @@ function Board.new(spec)
 end
 
 ----------------------------------------------------------------
--- Recalculation boundary
+-- Recalculation boundary (explicit)
 ----------------------------------------------------------------
 
 ---@return Board
@@ -133,7 +193,7 @@ function Board:recalc()
 end
 
 ----------------------------------------------------------------
--- Accessors
+-- Accessors (stable, intentional)
 ----------------------------------------------------------------
 
 ---@return number
@@ -151,7 +211,10 @@ function Board:ea_price()
     return self._ea_price
 end
 
---- Schema-aware safe getter
+----------------------------------------------------------------
+-- Schema-aware safe getter
+----------------------------------------------------------------
+
 ---@param key string
 ---@return any
 function Board:get(key)

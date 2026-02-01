@@ -1,19 +1,30 @@
+-- ingestion/pipeline.lua
+--
+-- Purpose:
+--   Read a file and normalize it into canonical "records".
+--   This module does NOT hydrate boards and does NOT return mixed kinds.
+--   The adapter is the contract gate for boards.
+
 local Read      = require("file_handler")
 local Normalize = require("file_handler.normalize")
 local FromLines = require("ingestion.normalization.from_lines")
 
-local BoardRec  = require("ingestion.normalization.reconcile_board")
-local Hydrate   = require("ingestion.hydrate.board")
-
 local Pipeline  = {}
 
+---@param path string
+---@param opts table|nil
+---@param debug_opts table|nil
+---@return { kind: "records", data: table[], meta: table }|nil
+---@return string|nil
 function Pipeline.run_file(path, opts, debug_opts)
     opts = opts or {}
     debug_opts = debug_opts or {}
 
-    -- READ
+    -- READ (raw file -> {kind=...})
     local raw, err = Read.read(path)
-    if not raw then return nil, err end
+    if not raw then
+        return nil, err
+    end
 
     local records
 
@@ -21,33 +32,16 @@ function Pipeline.run_file(path, opts, debug_opts)
     -- TEXT INPUT (raw lines)
     -- ----------------------------
     if raw.kind == "lines" then
-        -- run text parser (capture may be attached)
         records = FromLines.run(raw, {
-            capture = debug_opts.capture
+            capture = debug_opts.capture,
         })
 
-        -- ------------------------------------------------------------
-        -- NORMAL MODE: filter + hydrate
-        -- ------------------------------------------------------------
-        local filtered = {
-            kind = "records",
-            data = {},
-            meta = records.meta,
-        }
+        -- Preserve file meta on the records meta object
+        records.meta = records.meta or {}
+        records.meta.file = raw.meta
+        records.meta.source_path = path
 
-        for _, rec in ipairs(records.data) do
-            if rec.base_h and rec.base_w and rec.l then
-                filtered.data[#filtered.data + 1] = rec
-            end
-        end
-
-        -- nothing valid to hydrate
-        if #filtered.data == 0 then
-            return records, nil
-        end
-
-        local board_specs = BoardRec.run(filtered)
-        return Hydrate.boards(board_specs), nil
+        return records, nil
     end
 
     -- ----------------------------
@@ -55,23 +49,22 @@ function Pipeline.run_file(path, opts, debug_opts)
     -- ----------------------------
     if raw.kind == "table" then
         records = Normalize.table(raw)
+
     elseif raw.kind == "json" then
         records = assert(Normalize.json(raw))
+
     else
         return nil, "unsupported input kind: " .. tostring(raw.kind)
     end
 
-    records.meta = raw.meta
+    -- Normalize.* should yield {kind="records", data=..., meta=...} in your system.
+    assert(type(records) == "table" and records.kind == "records", "Normalize must return kind='records'")
 
-    -- ----------------------------
-    -- RECONCILE → BOARD SPECS
-    -- ----------------------------
-    local board_specs = BoardRec.run(records)
+    records.meta = records.meta or {}
+    records.meta.file = raw.meta
+    records.meta.source_path = path
 
-    -- ----------------------------
-    -- HYDRATE → BOARDS
-    -- ----------------------------
-    return Hydrate.boards(board_specs), nil
+    return records, nil
 end
 
 return Pipeline

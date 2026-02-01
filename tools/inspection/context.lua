@@ -6,13 +6,12 @@
 --   ctx.state  : table (targets mutate this)
 --   ctx.fns.*  : optional helper functions (pure, callable by targets)
 
-local Read      = require("file_handler")
-local FromLines = require("ingestion.normalization.from_lines")
-local Normalize = require("file_handler.normalize")
-local BoardRec  = require("ingestion.normalization.reconcile_board")
-local Hydrate   = require("ingestion.hydrate.board")
-local Adapter   = require("ingestion.adapter.readfile")
-local ParserCap = require("parsers.text_pipeline.capture")
+local Read       = require("file_handler")
+local Normalize  = require("file_handler.normalize")
+local ReaderV2   = require("ingestion_v2.reader")
+local AdapterV2  = require("ingestion_v2.adapter")
+local ParserCap  = require("parsers.text_pipeline.capture")
+local TextParser = require("parsers.text_pipeline")
 
 local Context = {}
 
@@ -24,25 +23,25 @@ function Context.new(path)
     local ctx = {
         path  = path,
         state = {},
-
-        -- Optional helpers (not required by Targets, but nice to have)
         fns = {
-            read = function(p)
+            read_raw = function(p)
                 return Read.read(p)
             end,
 
-            from_lines = function(raw)
-                local cap = ParserCap.new()
-                local records = FromLines.run(raw, { capture = cap })
-                return {
-                    records = records,
-                    parser  = cap.lines,
-                }
+            records = function(p, opts)
+                return ReaderV2.read(p, opts)
             end,
 
-            parse_only = function(raw)
+            ingest = function(p, opts)
+                return AdapterV2.ingest(p, opts)
+            end,
+
+            parse_only = function(raw_lines, opts)
+                opts = opts or {}
                 local cap = ParserCap.new()
-                FromLines.run(raw, { capture = cap })
+                TextParser.run(raw_lines, {
+                    capture = cap,
+                })
                 return cap.lines
             end,
 
@@ -53,18 +52,6 @@ function Context.new(path)
                     return Normalize.json(raw)
                 end
                 return raw
-            end,
-
-            reconcile = function(records)
-                return BoardRec.run(records)
-            end,
-
-            hydrate = function(specs)
-                return Hydrate.boards(specs)
-            end,
-
-            ingest = function(p)
-                return Adapter.ingest(p)
             end,
         }
     }

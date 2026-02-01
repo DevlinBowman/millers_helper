@@ -1,24 +1,28 @@
-local Read      = require("file_handler")
-local Normalize = require("file_handler.normalize")
-local FromLines = require("ingestion.normalization.from_lines")
-local BoardRec  = require("ingestion.normalization.reconcile_board")
-local Hydrate   = require("ingestion.hydrate.board")
+-- tools/inspection/inspector.lua
+--
+-- Inspection orchestrator (INGESTION V2)
+--
+-- Guarantees:
+--   • NO mutation
+--   • NO enforcement
+--   • Single source of truth = ingestion_v2
+--   • Stable state keys for debug.view
 
-local ParserCapture = require('parsers.text_pipeline.capture')
-local Stages    = require("tools.inspection.stages")
-local Capture   = require("tools.inspection.capture")
+local Read       = require("file_handler")
+local Normalize  = require("file_handler.normalize")
+local TextParser = require("parsers.text_pipeline")
+local Capture    = require("parsers.text_pipeline.capture")
+
+local IngestV2   = require("ingestion_v2.adapter")
+local Stages     = require("tools.inspection.stages")
 
 local Inspector = {}
 
 ---@param path string
 ---@param opts table|nil
--- opts = {
---   stop_at = Stages.*,
---   capture = Capture,
--- }
+---@return table state
 function Inspector.run(path, opts)
     opts = opts or {}
-    local cap = opts.capture
 
     local state = {}
 
@@ -27,76 +31,52 @@ function Inspector.run(path, opts)
     ----------------------------------------------------------------
     local raw = assert(Read.read(path))
     state.read = raw
-    Capture.record(cap, Stages.READ, raw)
 
     if opts.stop_at == Stages.READ then
         return state
     end
 
     ----------------------------------------------------------------
-    -- TEXT PARSE
+    -- RECORDS (canonical)
     ----------------------------------------------------------------
+    local records
+
     if raw.kind == "lines" then
-        -- parser-specific capture (line-indexed)
-        local parser_cap = ParserCapture.new()
-
-        local records = FromLines.run(raw, {
-            capture = parser_cap, -- ✅ correct object for parser
-        })
-
-        state.text_parse = records
-
-        -- record inspection snapshot (stage-oriented)
-        Capture.record(cap, Stages.TEXT_PARSE, {
-            records = records,      -- canonical ingestion records
-            parser  = parser_cap.lines, -- full parser internals
-        })
-
-        if opts.stop_at == Stages.TEXT_PARSE then
-            return state
+        local parser_cap
+        if opts.parser_capture then
+            parser_cap = Capture.new()
         end
 
-        raw = records
-    end
+        records = TextParser.run(raw.data, {
+            capture = parser_cap,
+        })
 
-    ----------------------------------------------------------------
-    -- NORMALIZE (CSV / JSON)
-    ----------------------------------------------------------------
-    if raw.kind == "table" then
-        raw = Normalize.table(raw)
-        state.normalize = raw
-        Capture.record(cap, Stages.NORMALIZE, raw)
-
-        if opts.stop_at == Stages.NORMALIZE then
-            return state
+        if parser_cap then
+            state.text_parser = parser_cap.lines
         end
+    elseif raw.kind == "table" then
+        records = Normalize.table(raw)
     elseif raw.kind == "json" then
-        raw = Normalize.json(raw)
-        state.normalize = raw
-        Capture.record(cap, Stages.NORMALIZE, raw)
-
-        if opts.stop_at == Stages.NORMALIZE then
-            return state
-        end
+        records = Normalize.json(raw)
+    else
+        error("Unsupported input kind: " .. tostring(raw.kind))
     end
 
-    ----------------------------------------------------------------
-    -- RECONCILE
-    ----------------------------------------------------------------
-    local specs = BoardRec.run(raw)
-    state.reconcile = specs
-    Capture.record(cap, Stages.RECONCILE, specs)
+    assert(records.kind == "records", "records stage must produce kind='records'")
+    state.records = records
 
-    if opts.stop_at == Stages.RECONCILE then
+    if opts.stop_at == Stages.RECORDS then
+        return state
+    end
+
+    if opts.stop_at == Stages.TEXT_PARSER then
         return state
     end
 
     ----------------------------------------------------------------
-    -- HYDRATE
+    -- INGEST (authoritative)
     ----------------------------------------------------------------
-    local boards = Hydrate.boards(specs)
-    state.hydrate = boards
-    Capture.record(cap, Stages.HYDRATE, boards)
+    state.ingest = IngestV2.ingest(path)
 
     return state
 end

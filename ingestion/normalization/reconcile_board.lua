@@ -76,6 +76,7 @@ function BoardIngest.run(records)
     local out = {}
     local meta = records.meta or {}
 
+
     for i, record in ipairs(records.data) do
         local ok, spec = pcall(BoardIngest.record_to_spec, record)
         if not ok then

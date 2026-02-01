@@ -1,3 +1,4 @@
+-- tools/inspection/capture.lua
 local Capture = {}
 
 function Capture.new(opts)

@@ -61,7 +61,7 @@ Schema.fields = {
     },
 
     grade = {
-        aliases = { "grade", "Grade", "GR" },
+        aliases = { "grade", "Grade", "GR", 'grd' },
         coerce  = tostring,
     },
 
@@ -129,7 +129,7 @@ Schema.fields = {
     },
 
     purpose = {
-        aliases = { "purpose", "Purpose" },
+        aliases = { "purpose", "Purposei", "useage" },
         coerce  = tostring,
     },
 
@@ -138,8 +138,18 @@ Schema.fields = {
         coerce  = tostring,
     },
 
+    stumpage_cost = {
+        aliases = { "cost", "stumpage" },
+        coerce = tostring,
+    },
+
+    stumpage_origin = {
+        aliases = { "owner", "log owner", "purchased from" },
+        coerce = tostring,
+    },
+
     notes = {
-        aliases = { "notes", "Notes" },
+        aliases = { "notes", "Notes", "note", "head" },
         coerce  = tostring,
     },
 }
