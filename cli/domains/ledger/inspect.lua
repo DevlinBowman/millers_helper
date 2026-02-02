@@ -1,11 +1,14 @@
 -- cli/domains/ledger/inspect.lua
-
-local I        = require("inspector")
-local Ledger   = require("ledger")
-local Store    = Ledger.store
-local Summary  = require("ledger.analysis.summary")
-local Keys     = require("ledger.analysis.keys")
-local Describe = require("ledger.analysis.describe")
+--
+-- Ledger inspection command adapter.
+--
+-- Responsibilities:
+--   • Define the CLI interface for `ledger inspect`
+--   • Expose inspection modes and flags (--keys, --describe)
+--   • Delegate execution to the ledger controller
+--
+-- This file performs no inspection itself.
+-- It is a pure interface definition.
 
 local M = {}
 
@@ -24,34 +27,8 @@ M.help = {
     },
 }
 
-function M.run(ctx)
-    local ledger_path = ctx.positionals[1]
-    if not ledger_path then
-        ctx:die("ledger inspect <ledger>")
-    end
-
-    local ledger = Store.load(ledger_path)
-
-    if ctx.flags.keys or ctx.flags.k then
-        I.print(Keys.run(ledger))
-        return
-    end
-
-    if ctx.flags.describe or ctx.flags.d then
-        local field = ctx.positionals[2]
-        if field then
-            local info = Describe.field(field)
-            if not info then
-                ctx:die("unknown field: " .. tostring(field))
-            end
-            I.print(info)
-        else
-            I.print(Describe.all())
-        end
-        return
-    end
-
-    I.print(Summary.run(ledger))
+function M.run(ctx, controller)
+    return controller:inspect(ctx)
 end
 
 return M

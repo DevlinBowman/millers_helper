@@ -1,4 +1,15 @@
 -- cli/help.lua
+--
+-- CLI help renderer.
+--
+-- Responsibilities:
+--   • Render global, domain, and command help
+--   • Read command metadata from the registry
+--   • Format usage, options, and examples
+--   • Hide internal registry entries (e.g. _controller)
+--
+-- This module is presentation-only.
+-- It does not influence command execution.
 
 local Registry = require("cli.registry")
 
@@ -90,7 +101,9 @@ function Help.print_domain(domain, suppress_header)
 
     local names = {}
     for a in pairs(actions) do
-        names[#names + 1] = a
+        if a:sub(1, 1) ~= "_" then
+            names[#names + 1] = a
+        end
     end
     table.sort(names)
 

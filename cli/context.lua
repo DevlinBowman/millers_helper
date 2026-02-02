@@ -1,4 +1,14 @@
 -- cli/context.lua
+--
+-- Invocation context for CLI command execution.
+--
+-- Responsibilities:
+--   • Carry parsed command intent (args, flags)
+--   • Provide standard IO handles (stdout, stderr)
+--   • Expose helper methods for errors, notes, and usage
+--
+-- Context is passed through the CLI → controller boundary.
+-- It is the primary execution envelope for commands.
 
 local Context = {}
 Context.__index = Context

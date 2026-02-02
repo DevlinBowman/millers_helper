@@ -1,5 +1,17 @@
 -- cli/parser.lua
 --
+-- Argument vector parser.
+--
+-- Responsibilities:
+--   • Convert raw argv into structured intent:
+--       { domain, action, positionals, flags }
+--   • Support short and long flags
+--   • Handle combined short flags (-ckv)
+--   • Remain domain-agnostic
+--
+-- This module does NOT execute commands.
+-- It only interprets command-line syntax.
+--
 -- argv → { domain, action, positionals, flags }
 --
 -- Supports:

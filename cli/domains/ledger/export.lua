@@ -1,8 +1,13 @@
 -- cli/domains/ledger/export.lua
-
-local Ledger = require("ledger")
-local Store  = Ledger.store
-local Export = require("ledger.export_csv")
+--
+-- Ledger export command adapter.
+--
+-- Responsibilities:
+--   • Define the CLI interface for `ledger export`
+--   • Declare expected arguments and help text
+--   • Delegate execution to the ledger controller
+--
+-- All export behavior lives in the controller and ledger services.
 
 local M = {}
 
@@ -14,19 +19,8 @@ M.help = {
     },
 }
 
-function M.run(ctx)
-    local ledger_path = ctx.positionals[1]
-    local out_path    = ctx.positionals[2]
-
-    if not ledger_path or not out_path then
-        ctx:die(M.help.usage)
-    end
-
-    local ledger = Store.load(ledger_path)
-    local ok, err = Export.write_csv(ledger, out_path)
-    if not ok then
-        ctx:die(err)
-    end
+function M.run(ctx, controller)
+    return controller:export(ctx)
 end
 
 return M

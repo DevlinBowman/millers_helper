@@ -1,11 +1,14 @@
 -- cli/domains/ledger/ingest.lua
-
-local Adapter = require("ingestion_v2.adapter")
-local Report  = require("ingestion_v2.report")
-
-local Ledger  = require("ledger")
-local Store   = Ledger.store
-local Ingest  = Ledger.ingest
+--
+-- Ledger ingest command adapter.
+--
+-- Responsibilities:
+--   • Define the CLI interface for `ledger ingest`
+--     (args, flags, help text, examples)
+--   • Delegate execution to the ledger controller
+--
+-- This file contains NO ingestion logic.
+-- It exists solely to describe the user-facing interface.
 
 local M = {}
 
@@ -23,39 +26,8 @@ M.help = {
     },
 }
 
-function M.run(ctx)
-    local target      = ctx.positionals[1]
-    local ledger_path = ctx.positionals[2]
-
-    if not target or not ledger_path then
-        ctx:die(M.help.usage)
-    end
-
-    local commit = (ctx.flags.commit or ctx.flags.c) and true or false
-    local dry    = (ctx.flags.dry or ctx.flags.n) and true or false
-
-    if dry then commit = false end
-
-    local ingest_result = Adapter.ingest(target)
-
-    -- existing reporting stays for now
-    Report.print(ingest_result, { compact = ctx.flags.compact and true or false })
-
-    if not commit then
-        ctx:note("note: dry-run (use --commit / -c to commit)")
-        return
-    end
-
-    local ledger = Store.load(ledger_path)
-    local boards = ingest_result.boards.data
-
-    Ingest.run(
-        ledger,
-        { kind = "boards", data = boards },
-        { path = target }
-    )
-
-    Store.save(ledger_path, ledger)
+function M.run(ctx, controller)
+    return controller:ingest(ctx)
 end
 
 return M
