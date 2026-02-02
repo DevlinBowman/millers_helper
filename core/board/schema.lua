@@ -77,7 +77,7 @@ Schema.fields = {
         aliases = { "bf vol", "BF Vol", "bf_vol", "BF_Vol" },
     },
 
-    total_bf = {
+    batch_bf = {
         role    = Schema.ROLES.DERIVED,
         aliases = { "total_bf", "Total BF", "BF Total" },
     },
