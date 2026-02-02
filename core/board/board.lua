@@ -99,7 +99,6 @@ local function recalc_cached(board)
     -- Physical quantities
     board._bf        = Convert.bf(board)
     board._bf_per_lf = Convert.bf_per_lf(board)
-    board.batch_bf   = Util.round_number(board._bf * board.ct, 2)
 
     -- Pricing (derived, optional)
     board._ea_price  = nil
@@ -211,10 +210,10 @@ function Board:bf()
     return self._bf
 end
 
--- ---@return number
--- function Board:batch_bf()
---     return self._bf * self.ct
--- end
+---@return number
+function Board:bf_total()
+    return self._bf * self.ct
+end
 
 ---@return number|nil
 function Board:ea_price()
