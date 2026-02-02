@@ -37,6 +37,11 @@ local function build_seen_index(ledger)
     return seen
 end
 
+local function basename(path)
+    if type(path) ~= "string" then return nil end
+    return path:match("([^/\\]+)$") or path
+end
+
 ----------------------------------------------------------------
 -- Public API
 ----------------------------------------------------------------
@@ -62,7 +67,7 @@ function Ingest.run(ledger, boards, source)
     local next_id    = #ledger.facts + 1
     local occ_counts = {} -- base_identity -> local occurrence count
 
-    local report = {
+    local report     = {
         boards_seen = #boards.data,
         added       = 0,
         skipped     = 0,
@@ -83,6 +88,11 @@ function Ingest.run(ledger, boards, source)
         if seen[content_key] then
             report.skipped = report.skipped + 1
         else
+            -- Materialize source filename onto the board fact
+            if board.source_file == nil then
+                board.source_file = basename(src.path)
+            end
+
             ledger.facts[#ledger.facts + 1] = {
                 fact_id     = gen_fact_id(next_id),
                 content_key = content_key,
