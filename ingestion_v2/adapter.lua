@@ -16,15 +16,15 @@ local Adapter = {}
 ----------------------------------------------------------------
 
 local DERIVED_RESOLVERS = {
-    bf_vol = function(b) return b:bf_total() end,
-    total_bf = function(b) return b:bf_total() end,
+    bf_batch = function(b) return b.bf_batch end,
     value = function(b)
         if b.bf_price then
-            return b:bf_total() * b.bf_price
+            return b.bf_batch * b.bf_price
         end
         return nil
     end,
 }
+
 
 local function push_all(dst, src)
     for i = 1, #src do dst[#dst+1] = src[i] end

@@ -72,14 +72,14 @@ Schema.fields = {
     -- ========================
     -- DERIVED / COMPUTED
     -- ========================
-    bf_vol = {
+    bf_batch = {
         role    = Schema.ROLES.DERIVED,
-        aliases = { "bf vol", "BF Vol", "bf_vol", "BF_Vol" },
-    },
-
-    total_bf = {
-        role    = Schema.ROLES.DERIVED,
-        aliases = { "total_bf", "Total BF", "BF Total" },
+        aliases = {
+            -- legacy bf_vol
+            "bf vol", "BF Vol", "bf_vol", "BF_Vol",
+            -- legacy total_bf
+            "total_bf", "Total BF", "BF Total",
+        },
     },
 
     value = {

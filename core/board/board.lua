@@ -28,7 +28,7 @@ local Schema    = require("core.board.schema")
 ---@field tag string
 ---@field label string
 ---@field id string
----@field _bf number
+---@field _bf_ea number
 ---@field _bf_per_lf number
 ---@field _ea_price number|nil
 ---@field n_delta_vol number|nil
@@ -97,8 +97,12 @@ local function recalc_cached(board)
     )
 
     -- Physical quantities
-    board._bf        = Convert.bf(board)
+    board._bf_ea     = Convert.bf(board)
     board._bf_per_lf = Convert.bf_per_lf(board)
+    board._bf_batch  = board._bf_ea * board.ct  -- <<< HERE
+
+    -- Schema surface (public, declarative)
+    board.bf_batch   = board._bf_batch
 
     -- Pricing (derived, optional)
     board._ea_price  = nil
@@ -115,8 +119,9 @@ local function recalc_cached(board)
             board.l
         )
 
+        -- TODO: make this actually do the thing
         board.n_delta_vol = (nominal > 0)
-            and Util.round_number(board._bf / nominal, 2)
+            and Util.round_number(board._bf_ea / nominal, 2)
             or 1.0
     end
 end
@@ -205,14 +210,12 @@ end
 -- Accessors (stable, intentional)
 ----------------------------------------------------------------
 
----@return number
-function Board:bf()
-    return self._bf
+function Board:bf_ea()
+    return self._bf_ea
 end
 
----@return number
-function Board:bf_total()
-    return self._bf * self.ct
+function Board:bf_batch()
+    return self._bf_ea * self.ct
 end
 
 ---@return number|nil

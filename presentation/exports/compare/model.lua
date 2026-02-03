@@ -3,8 +3,8 @@
 -- Builds ComparisonModel.
 -- No formatting. No math. No normalization.
 
-local CompareContract = require("presentation.exports.compare.contract")
-local BoardMatcher    = require("presentation.exports.compare.matcher")
+local CompareContract        = require("presentation.exports.compare.contract")
+local BoardMatcher           = require("presentation.exports.compare.matcher")
 
 local ComparisonModelBuilder = {}
 
@@ -47,13 +47,13 @@ function ComparisonModelBuilder.build(input)
                         grade   = matched.grade,
                         surface = matched.surface,
                     },
-                    pricing = pricing,
-                    units   = {
-                        bf_per_piece = ob.bf_each,
-                        length_ft   = ob.l,
+                    pricing       = pricing,
+                    units         = {
+                        bf_per_piece = ob.bf_ea,
+                        length_ft    = ob.l,
                         count        = ob.ct or 1,
                     },
-                    meta = {
+                    meta          = {
                         match_type = match_type,
                     }
                 }
@@ -64,7 +64,7 @@ function ComparisonModelBuilder.build(input)
 
                 model.totals[src.name].total_bf =
                     model.totals[src.name].total_bf +
-                    ((ob.bf_each or 0) * (ob.ct or 1))
+                    (ob.bf_batch or 0)
 
                 model.totals[src.name].total_pcs =
                     model.totals[src.name].total_pcs + (ob.ct or 1)

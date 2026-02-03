@@ -107,19 +107,19 @@ Describe.fields = {
     ----------------------------------------------------------------
     -- Volume & pricing (derived)
     ----------------------------------------------------------------
-    bf_vol = {
+    bf_ea = {
         role        = "derived",
         source      = "system",
         units       = "board-feet",
-        description = "Board feet per single board (rounded)",
+        description = "Board feet per individual board (h × w × l ÷ 12)",
         queryable   = true,
     },
 
-    total_bf = {
+    bf_batch = {
         role        = "derived",
         source      = "system",
         units       = "board-feet",
-        description = "Total board feet (bf_vol × ct)",
+        description = "Board feet for this record (bf_ea × ct)",
         queryable   = true,
     },
 

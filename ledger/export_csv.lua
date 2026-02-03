@@ -34,8 +34,8 @@ local PREFERRED_ORDER = {
     "tag",
     "ct",
 
-    "bf",
-    "ea_bf",
+    "bf_ea",
+    "bf_batch",
     "bf_per_lf",
     "bf_price",
 }
