@@ -9,6 +9,10 @@
 --   • compact: single-line, scan-friendly output
 --
 -- NO logic. NO mutation. NO inference.
+--
+
+---@class ReportPrintOpts
+---@field compact boolean|nil -- Use compact, scan-friendly warning output
 
 local Report = {}
 
@@ -228,7 +232,7 @@ end
 ----------------------------------------------------------------
 
 ---@param ingest_result table
----@param opts table|nil -- { compact = boolean }
+---@param opts ReportPrintOpts|nil
 function Report.print(ingest_result, opts)
     assert(type(ingest_result) == "table", "report.print(): ingest_result required")
     opts = opts or {}
