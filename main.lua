@@ -20,19 +20,20 @@ Report.print(ingest_result)
 
 -- Boards only (authoritative payload)
 local boards = ingest_result.boards.data
+I.print(boards)
 
 -- Ledger sees BOARDS ONLY
-local ledger = Store.load(LEDGER_PATH)
-local report = Ingest.run(
-    ledger,
-    { kind = "boards", data = boards },
-    { path = INPUT }
-)
-
-Store.save(LEDGER_PATH, ledger)
-
-I.print(report)
-
+-- local ledger = Store.load(LEDGER_PATH)
+-- local report = Ingest.run(
+--     ledger,
+--     { kind = "boards", data = boards },
+--     { path = INPUT }
+-- )
+--
+-- Store.save(LEDGER_PATH, ledger)
+--
+-- I.print(report)
+--
 -- High-level
 -- I.print(Ledger.inspect.summary(ledger))
 
@@ -47,8 +48,8 @@ I.print(report)
 --
 -- I.print(Ledger.inspect.overview(ledger))
 --
-local Export = require("ledger.export_csv")
-
-local ok, err = Export.write_csv(ledger, "data/ledger_export.csv")
-
-assert(ok, err)
+-- local Export = require("ledger.export_csv")
+--
+-- local ok, err = Export.write_csv(ledger, "data/ledger_export.csv")
+--
+-- assert(ok, err)

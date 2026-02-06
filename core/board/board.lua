@@ -1,4 +1,5 @@
 -- core/board/board.lua
+-- I.print(boards)
 -- Authoritative board constructor + invariant boundary
 --
 -- BOARD-FIRST / FLAT FACT RECORD
@@ -99,7 +100,7 @@ local function recalc_cached(board)
     -- Physical quantities
     board._bf_ea     = Convert.bf(board)
     board._bf_per_lf = Convert.bf_per_lf(board)
-    board._bf_batch  = board._bf_ea * board.ct  -- <<< HERE
+    board._bf_batch  = board._bf_ea * board.ct -- <<< HERE
 
     -- Schema surface (public, declarative)
     board.bf_batch   = board._bf_batch
@@ -111,18 +112,19 @@ local function recalc_cached(board)
     end
 
     -- Nominal delta (only meaningful for nominal boards)
+    -- Declared (base) vs delivered (normalized) volume delta
     board.n_delta_vol = nil
-    if board.tag == "n" then
-        local nominal = Normalize.nominal_bf(
-            board.base_h,
-            board.base_w,
-            board.l
-        )
 
-        -- TODO: make this actually do the thing
-        board.n_delta_vol = (nominal > 0)
-            and Util.round_number(board._bf_ea / nominal, 2)
-            or 1.0
+    if board.base_h and board.base_w and board.l then
+        local base_bf = (board.base_h * board.base_w * board.l) / 12
+        local delivered_bf = board._bf_ea
+
+        if base_bf > 0 then
+            local delta = (delivered_bf - base_bf) / base_bf
+            board.n_delta_vol = Util.round_number(delta, 2)
+        else
+            board.n_delta_vol = 0
+        end
     end
 end
 
