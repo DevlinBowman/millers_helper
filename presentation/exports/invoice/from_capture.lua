@@ -8,6 +8,7 @@ local M = {}
 --- @param source_id string|nil -- choose a single source
 --- @return table invoice_input
 function M.build_input(capture, source_id)
+
     assert(type(capture) == "table", "capture required")
 
     if source_id then
@@ -25,7 +26,13 @@ function M.build_input(capture, source_id)
     local boards = {}
     for _, src in ipairs(capture.sources or {}) do
         for _, b in ipairs(src.boards.data) do
-            boards[#boards + 1] = b
+            if b.physical then
+                boards[#boards + 1] = b
+            else
+                -- flat board → project using Board.new recalc path
+                local Board = require("core.board.board")
+                boards[#boards + 1] = Board.new(b)
+            end
         end
     end
 
