@@ -42,12 +42,16 @@ function Serialize.boards_to_table(boards)
 
     ------------------------------------------------------------
     -- 2) Detect extra fields (lossless ingest)
+    --     (exclude derived runtime caches)
     ------------------------------------------------------------
     local extra_fields = {}
 
     for _, board in ipairs(boards) do
         for k in pairs(board) do
-            if not Schema.fields[k] then
+            if not Schema.fields[k]
+                and k ~= "bf_ea"
+                and k ~= "bf_per_lf"
+            then
                 extra_fields[k] = true
             end
         end

@@ -29,10 +29,15 @@ local Schema    = require("core.board.schema")
 ---@field tag string
 ---@field label string
 ---@field id string
----@field _bf_ea number
----@field _bf_per_lf number
----@field _ea_price number|nil
+---@field ea_price number|nil
+---@field lf_price number|nil
+---@field bf_price number|nil
+---@field batch_price number|nil
+---@field bf_ea number
+---@field bf_per_lf number
+---@field bf_batch number
 ---@field n_delta_vol number|nil
+
 local Board     = {}
 Board.__index   = Board
 
@@ -70,7 +75,6 @@ local function apply_schema_coercions(board)
         if value ~= nil and def.coerce then
             local coerced = def.coerce(value)
 
-            -- Hard failure: schema says this must be coercible
             if coerced == nil and value ~= nil then
                 error(string.format(
                     "Board.new(): failed to coerce field '%s' (value=%s)",
@@ -85,47 +89,118 @@ local function apply_schema_coercions(board)
 end
 
 ----------------------------------------------------------------
+-- Pricing normalization (authoritative)
+----------------------------------------------------------------
+
+---@param board Board
+local function resolve_pricing(board)
+    local bf_price = board.bf_price
+
+    if bf_price == nil then
+        if board.ea_price ~= nil then
+            bf_price = Convert.ea_price_to_bf_price(board)
+        elseif board.lf_price ~= nil then
+            bf_price = Convert.lf_price_to_bf_price(board)
+        end
+    end
+
+    if bf_price == nil then
+        board.bf_price    = nil
+        board.ea_price    = nil
+        board.lf_price    = nil
+        board.batch_price = nil
+        return
+    end
+
+    board.bf_price = bf_price
+    board.ea_price = Convert.bf_price_to_ea_price(board)
+    board.lf_price = Convert.bf_price_to_lf_price(board)
+
+    board.batch_price = Util.round_number(
+        bf_price * board.bf_batch,
+        2
+    )
+end
+
+----------------------------------------------------------------
 -- Derived cache computation (authoritative)
 ----------------------------------------------------------------
 
 ---@param board Board
 local function recalc_cached(board)
-    -- Resolve working face (ALWAYS)
     board.h, board.w = Normalize.face_from_tag(
         board.base_h,
         board.base_w,
         board.tag
     )
 
-    -- Physical quantities
-    board._bf_ea     = Convert.bf(board)
-    board._bf_per_lf = Convert.bf_per_lf(board)
-    board._bf_batch  = board._bf_ea * board.ct -- <<< HERE
+    board.bf_ea     = Convert.bf(board)
+    board.bf_per_lf = Convert.bf_per_lf(board)
+    board.bf_batch  = board.bf_ea * board.ct
 
-    -- Schema surface (public, declarative)
-    board.bf_batch   = board._bf_batch
+    resolve_pricing(board)
 
-    -- Pricing (derived, optional)
-    board._ea_price  = nil
-    if board.bf_price ~= nil then
-        board._ea_price = Convert.bf_price_to_ea_price(board)
-    end
+    board.n_delta_vol = Normalize.nominal_delta(board)
+end
 
-    -- Nominal delta (only meaningful for nominal boards)
-    -- Declared (base) vs delivered (normalized) volume delta
-    board.n_delta_vol = nil
+----------------------------------------------------------------
+-- Output projection (authoritative)
+----------------------------------------------------------------
 
-    if board.base_h and board.base_w and board.l then
-        local base_bf = (board.base_h * board.base_w * board.l) / 12
-        local delivered_bf = board._bf_ea
+---@param flat Board
+---@return table
+local function project_grouped_board(flat)
+    local out = {
+        physical = {},
+        pricing  = {},
+        context  = {},
+    }
 
-        if base_bf > 0 then
-            local delta = (delivered_bf - base_bf) / base_bf
-            board.n_delta_vol = Util.round_number(delta, 2)
-        else
-            board.n_delta_vol = 0
+    local physical_fields = {
+        "base_h", "base_w", "l", "tag",
+        "h", "w",
+        "ct",
+        "bf_ea", "bf_per_lf", "bf_batch",
+        "species", "grade", "moisture", "surface",
+        "n_delta_vol",
+    }
+
+    for _, key in ipairs(physical_fields) do
+        local v = flat[key]
+        if v ~= nil then
+            out.physical[key] = v
         end
     end
+
+    local pricing_fields = {
+        "bf_price",
+        "lf_price",
+        "ea_price",
+        "batch_price",
+    }
+
+    for _, key in ipairs(pricing_fields) do
+        local v = flat[key]
+        if v ~= nil then
+            out.pricing[key] = v
+        end
+    end
+
+    for k, v in pairs(flat) do
+        if Schema.fields[k]
+            and out.physical[k] == nil
+            and out.pricing[k] == nil
+            and k ~= "label"
+            and k ~= "id"
+        then
+            out.context[k] = v
+        end
+    end
+
+    out.label = flat.label
+    out.id    = flat.id
+
+    return out
 end
 
 ----------------------------------------------------------------
@@ -133,73 +208,55 @@ end
 ----------------------------------------------------------------
 
 ---@param spec table
----@return Board
-function Board.new(spec)
+---@param opts table|nil
+---@return table
+function Board.new(spec, opts)
     assert(type(spec) == "table", "Board.new(): spec table required")
+    opts = opts or {}
 
     local base_h, base_w = resolve_declared_dims(spec)
     assert_posnum(spec.l, "l")
 
-    ---@type Board
     local board = {}
 
-    ------------------------------------------------------------
-    -- 1) Initialize schema universe (semantic density)
-    ------------------------------------------------------------
-    -- NOTE: assigning nil does not create physical keys;
-    -- this establishes intent, not runtime presence.
     for field in pairs(Schema.fields) do
         board[field] = nil
     end
 
-    ------------------------------------------------------------
-    -- 2) Declared invariants (authoritative inputs)
-    ------------------------------------------------------------
     board.base_h = base_h
     board.base_w = base_w
     board.l      = spec.l
     board.ct     = tonumber(spec.ct) or 1
-
-    -- Default interpretation: NOMINAL
     board.tag    = spec.tag or "n"
 
-    ------------------------------------------------------------
-    -- 3) Copy all provided data (lossless ingest)
-    ------------------------------------------------------------
     for k, v in pairs(spec) do
         board[k] = v
     end
 
-    ------------------------------------------------------------
-    -- 3.25) Strip derived inputs (schema-driven)
-    ------------------------------------------------------------
     for field, def in pairs(Schema.fields) do
         if def.role == Schema.ROLES.DERIVED then
             board[field] = nil
         end
     end
 
-    ------------------------------------------------------------
-    -- 3.5) Apply schema coercions (authoritative)
-    ------------------------------------------------------------
     apply_schema_coercions(board)
 
-    ------------------------------------------------------------
-    -- 4) Identity (physical snapshot)
-    ------------------------------------------------------------
     board.label = Label.generate(board)
     board.id    = board.label
 
-    ------------------------------------------------------------
-    -- 5) Derived caches (always)
-    ------------------------------------------------------------
     recalc_cached(board)
 
-    return setmetatable(board, Board)
+    local flat = setmetatable(board, Board)
+
+    if opts.flat then
+        return flat
+    end
+
+    return project_grouped_board(flat)
 end
 
 ----------------------------------------------------------------
--- Recalculation boundary (explicit)
+-- Recalculation boundary (explicit, flat only)
 ----------------------------------------------------------------
 
 ---@return Board
@@ -209,24 +266,24 @@ function Board:recalc()
 end
 
 ----------------------------------------------------------------
--- Accessors (stable, intentional)
+-- Accessors (stable, intentional, flat only)
 ----------------------------------------------------------------
 
 function Board:bf_ea()
-    return self._bf_ea
+    return self.bf_ea
 end
 
-function Board:bf_batch()
-    return self._bf_ea * self.ct
+function Board:calc_bf_batch()
+    return self.bf_ea * self.ct
 end
 
 ---@return number|nil
 function Board:ea_price()
-    return self._ea_price
+    return self.ea_price
 end
 
 ----------------------------------------------------------------
--- Schema-aware safe getter
+-- Schema-aware safe getter (flat only)
 ----------------------------------------------------------------
 
 ---@param key string

@@ -17,6 +17,31 @@ local Schema = {}
 ----------------------------------------------------------------
 -- Field role constants (declarative only)
 ----------------------------------------------------------------
+local function coerce_currency_number(v)
+    if v == nil then
+        return nil
+    end
+
+    if type(v) == "number" then
+        return v
+    end
+
+    if type(v) ~= "string" then
+        return nil
+    end
+
+    -- trim whitespace
+    local s = v:match("^%s*(.-)%s*$")
+    if not s or s == "" then
+        return nil
+    end
+
+    -- strip currency symbols and separators
+    -- supports: "$12.50", "12.50", "$1,234.56"
+    s = s:gsub("[%$,]", "")
+
+    return tonumber(s)
+end
 
 Schema.ROLES = {
     AUTHORITATIVE = "authoritative", -- trusted input
@@ -82,23 +107,39 @@ Schema.fields = {
         },
     },
 
+    bf_ea = {
+        role = Schema.ROLES.DERIVED,
+        aliases = { "bf_ea", "BF EA" },
+    },
+
+    bf_per_lf = {
+        role = Schema.ROLES.DERIVED,
+        aliases = { "bf_per_lf", "BF/LF" },
+    },
+
+    -- #TODO - Rename to 'revenue'
     value = {
         role    = Schema.ROLES.DERIVED,
         aliases = { "value", "Value", "Total Value" },
+        coerce  = coerce_currency_number
     },
 
-    ea_price = {
-        role    = Schema.ROLES.DERIVED,
-        aliases = { "ea_price", "EA Price", "Each Price" },
-    },
-
-    -- ========================
-    -- PRICING (INPUT)
-    -- ========================
     bf_price = {
         role    = Schema.ROLES.AUTHORITATIVE,
         aliases = { "bf_price", "BFPrice", "Price/BF", "price/bf", "price_per_bf" },
-        coerce  = tonumber,
+        coerce  = coerce_currency_number,
+    },
+
+    ea_price = {
+        role    = Schema.ROLES.AUTHORITATIVE,
+        aliases = { "ea_price", "EA Price", "Each Price" },
+        coerce  = coerce_currency_number,
+    },
+
+    lf_price = {
+        role    = Schema.ROLES.AUTHORITATIVE,
+        aliases = { "lf_price", "LF Price", "Price/LF", "price_per_lf" },
+        coerce  = coerce_currency_number,
     },
 
     -- ========================
