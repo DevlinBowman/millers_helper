@@ -1,87 +1,124 @@
 -- presentation/exports/compare/model.lua
 --
 -- Builds ComparisonModel.
--- No formatting. No math. No normalization.
+-- Accumulates per-source job totals based on matched pricing.
 
-local CompareContract        = require("presentation.exports.compare.contract")
-local BoardMatcher           = require("presentation.exports.compare.matcher")
+local CompareContract = require("presentation.exports.compare.contract")
+local BoardMatcher    = require("presentation.exports.compare.matcher")
 
-local ComparisonModelBuilder = {}
+local M = {}
 
-function ComparisonModelBuilder.build(input)
+----------------------------------------------------------------
+-- Helpers
+----------------------------------------------------------------
+
+local function bf_per_piece(b)
+    local p = b.physical or {}
+    if type(p.bf_ea) == "number" then return p.bf_ea end
+    if p.h and p.w and p.l then
+        return (p.h * p.w * p.l) / 12.0
+    end
+    return 0
+end
+
+local function round(n)
+    return math.floor((n or 0) * 100 + 0.5) / 100
+end
+
+local function apply_bf_price(bf_price, order_board)
+    local p  = order_board.physical
+    local bf = bf_per_piece(order_board)
+    local ct = p.ct or 1
+    local l  = p.l or 0
+
+    local ea    = round(bf_price * bf)
+    local lf    = (l > 0) and round(ea / l) or 0
+    local total = round(ea * ct)
+
+    return {
+        ea    = ea,
+        lf    = lf,
+        bf    = round(bf_price),
+        total = total,
+    }
+end
+
+----------------------------------------------------------------
+-- Builder
+----------------------------------------------------------------
+
+function M.build(input)
     CompareContract.validate(input)
 
     local model = {
-        order_id = input.order.id,
-        rows     = {},
-        totals   = {},
+        rows   = {},
+        totals = {},  -- per-source job totals
     }
 
+    ----------------------------------------------------------------
+    -- Initialize totals (input + each source)
+    ----------------------------------------------------------------
+
+    model.totals["input"] = { total = 0 }
+
     for _, src in ipairs(input.sources) do
-        model.totals[src.name] = {
-            total_price = 0,
-            total_bf    = 0,
-            total_pcs   = 0,
-        }
+        model.totals[src.name] = { total = 0 }
     end
+
+    ----------------------------------------------------------------
+    -- Build rows + accumulate totals
+    ----------------------------------------------------------------
 
     for _, ob in ipairs(input.order.boards) do
         local row = {
             order_board = ob,
-            offers = {},
+            offers      = {},
         }
 
+        -- INPUT (primary)
+        local input_bf = ob.pricing and ob.pricing.bf_price or 0
+        local input_pr = apply_bf_price(input_bf, ob)
+
+        row.offers["input"] = {
+            pricing = input_pr,
+            meta    = { match_type = "INPUT" },
+        }
+
+        model.totals["input"].total =
+            model.totals["input"].total + input_pr.total
+
+        -- SOURCES
         for _, src in ipairs(input.sources) do
-            local matched, match_type =
-                BoardMatcher.match(ob, src.boards)
+            local matched, sig = BoardMatcher.match(ob, src.boards)
 
             if matched then
-                local pricing = matched.pricing or {}
+                local bf_price =
+                    (matched.pricing and matched.pricing.bf_price) or 0
+
+                local pr = apply_bf_price(bf_price, ob)
 
                 row.offers[src.name] = {
-                    matched_offer = {
-                        id      = matched.id,
-                        h       = matched.h,
-                        w       = matched.w,
-                        l       = matched.l,
-                        grade   = matched.grade,
-                        surface = matched.surface,
-                    },
-                    pricing       = pricing,
-                    units         = {
-                        bf_per_piece = ob.bf_ea,
-                        length_ft    = ob.l,
-                        count        = ob.ct or 1,
-                    },
-                    meta          = {
-                        match_type = match_type,
+                    pricing = pr,
+                    meta    = {
+                        match_type = sig,
+                        label      = matched.id,
                     }
                 }
 
-                model.totals[src.name].total_price =
-                    model.totals[src.name].total_price +
-                    (pricing.total or 0)
-
-                model.totals[src.name].total_bf =
-                    model.totals[src.name].total_bf +
-                    (ob.bf_batch or 0)
-
-                model.totals[src.name].total_pcs =
-                    model.totals[src.name].total_pcs + (ob.ct or 1)
+                model.totals[src.name].total =
+                    model.totals[src.name].total + pr.total
             else
                 row.offers[src.name] = {
-                    matched_offer = nil,
                     pricing = {},
-                    units = {},
-                    meta = { match_type = "none" }
+                    meta    = { match_type = "none" },
                 }
             end
         end
 
-        table.insert(model.rows, row)
+        model.rows[#model.rows + 1] = row
     end
 
     return model
 end
 
-return ComparisonModelBuilder
+return M

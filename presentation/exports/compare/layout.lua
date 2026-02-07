@@ -1,17 +1,15 @@
 -- presentation/exports/compare/layout.lua
---
--- Column schemas for comparison printing.
 
-local CompareLayout = {}
+local L = {}
 
-CompareLayout.header = {
+L.header = {
     { "Source", 15, "L" },
-    { "Matched", 28, "L" },
+    { "Matched Label", 30, "L" },
     { "ea", 10, "R" },
     { "lf", 10, "R" },
     { "bf", 10, "R" },
-    { "total", 12, "R" },
+    { "total", 10, "R" },
     { "match", 10, "L" },
 }
 
-return CompareLayout
+return L

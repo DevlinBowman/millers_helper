@@ -1,14 +1,28 @@
 -- presentation/exports/compare/from_capture.lua
 --
 -- Adapts BoardCapture into Compare input contract.
--- NO mutation. NO math. NO matching.
+-- Ensures boards are in the same grouped Board shape used by invoice.
 
 local M = {}
 
---- @param capture table -- BoardCapture
---- @param order   table -- { id, boards }
---- @param opts    table|nil
---- @return table compare_input
+local function ensure_grouped_board(b)
+    if type(b) ~= "table" then return b end
+    if type(b.physical) == "table" and type(b.pricing) == "table" then
+        return b
+    end
+
+    local Board = require("core.board.board")
+    return Board.new(b)
+end
+
+local function ensure_grouped_boards(list)
+    local out = {}
+    for _, b in ipairs(list or {}) do
+        out[#out + 1] = ensure_grouped_board(b)
+    end
+    return out
+end
+
 function M.build_input(capture, order, opts)
     opts = opts or {}
 
@@ -20,16 +34,15 @@ function M.build_input(capture, order, opts)
 
     for _, src in ipairs(capture.sources or {}) do
         sources[#sources + 1] = {
-            name   = opts.name_map and opts.name_map[src.source_id]
-                     or src.source_id,
-            boards = src.boards.data,
+            name   = (opts.name_map and opts.name_map[src.source_id]) or src.source_id,
+            boards = ensure_grouped_boards((src.boards and src.boards.data) or {}),
         }
     end
 
     return {
         order = {
             id     = order.id,
-            boards = order.boards,
+            boards = ensure_grouped_boards(order.boards),
         },
         sources = sources,
     }
