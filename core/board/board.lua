@@ -13,7 +13,7 @@
 --   Schema density is enforced semantically via Schema.fields
 --   and accessors, not via physical key presence.
 
-local Label     = require("core.board.label")
+local Label     = require("core.board.label.init")
 local Convert   = require("core.board.attr_conversion")
 local Normalize = require("core.board.normalize")
 local Util      = require("core.board.utils.helpers")
