@@ -1,4 +1,4 @@
--- src/enums/lumber_grade.lua
+-- core/enums/grades.lua
 -- Axis-first grading model with market-faithful grade multipliers (Redwood)
 
 local Grade = {}
