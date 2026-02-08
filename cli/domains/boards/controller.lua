@@ -12,8 +12,8 @@
 -- NO mutation.
 -- NO formatting.
 
-local Capture = require("ingestion_v2.board_capture")
-local Report  = require("ingestion_v2.report")
+local Capture = require("ingestion.board_capture")
+local Report  = require("ingestion.report")
 local Printer = require("cli.core.printer")
 
 local Controller = {}

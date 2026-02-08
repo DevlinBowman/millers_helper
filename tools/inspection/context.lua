@@ -8,8 +8,8 @@
 
 local Read       = require("file_handler")
 local Normalize  = require("file_handler.normalize")
-local ReaderV2   = require("ingestion_v2.reader")
-local AdapterV2  = require("ingestion_v2.adapter")
+local ReaderV2   = require("ingestion.reader")
+local AdapterV2  = require("ingestion.adapter")
 local ParserCap  = require("parsers.text_pipeline.capture")
 local TextParser = require("parsers.text_pipeline")
 

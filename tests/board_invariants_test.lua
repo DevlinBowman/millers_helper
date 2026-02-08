@@ -2,7 +2,7 @@
 --
 -- Boards produced by ingestion must be authoritative objects.
 
-local Ingest = require("ingestion_v2.adapter")
+local Ingest = require("ingestion.adapter")
 local H      = require("tests._helpers")
 
 local path = "tests/data_format/input.txt"

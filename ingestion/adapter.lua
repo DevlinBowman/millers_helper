@@ -2,11 +2,11 @@
 --
 -- FINAL CONTRACT GATE
 
-local Reader    = require("ingestion_v2.reader")
-local Hygiene   = require("ingestion_v2.record_hygiene")
-local Builder   = require("ingestion_v2.record_builder")
-local Premap    = require("ingestion_v2.record_board_dimension_premap")
-local Validator = require("ingestion_v2.record_validator")
+local Reader    = require("ingestion.reader")
+local Hygiene   = require("ingestion.record_hygiene")
+local Builder   = require("ingestion.record_builder")
+local Premap    = require("ingestion.record_board_dimension_premap")
+local Validator = require("ingestion.record_validator")
 local Board     = require("core.board.board")
 
 local Adapter = {}

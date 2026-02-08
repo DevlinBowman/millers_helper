@@ -8,7 +8,7 @@
 -- NO sinks
 -- NO printing
 
-local Capture        = require("ingestion_v2.board_capture")
+local Capture        = require("ingestion.board_capture")
 
 local CompareInput   = require("core.compare.input")
 local Compare        = require("core.compare")

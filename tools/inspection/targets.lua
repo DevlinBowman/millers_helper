@@ -7,8 +7,8 @@
 --   • never returns values
 
 local Read       = require("file_handler")
-local ReaderV2   = require("ingestion_v2.reader")
-local AdapterV2  = require("ingestion_v2.adapter")
+local ReaderV2   = require("ingestion.reader")
+local AdapterV2  = require("ingestion.adapter")
 
 local ParserCapture = require("parsers.text_pipeline.capture")
 local TextParser    = require("parsers.text_pipeline")

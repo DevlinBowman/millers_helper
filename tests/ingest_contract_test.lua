@@ -3,7 +3,7 @@
 -- Ingestion V2 contract test.
 -- Ensures boards + signals always returned.
 
-local Ingest = require("ingestion_v2.adapter")
+local Ingest = require("ingestion.adapter")
 local H      = require("tests._helpers")
 
 local files = {

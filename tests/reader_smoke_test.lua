@@ -3,7 +3,7 @@
 -- Reader must return canonical records for all supported formats.
 -- NO board logic. NO validation.
 
-local Reader = require("ingestion_v2.reader")
+local Reader = require("ingestion.reader")
 local H = require("tests._helpers")
 
 local files = {

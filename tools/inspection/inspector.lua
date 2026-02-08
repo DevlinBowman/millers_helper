@@ -13,7 +13,7 @@ local Normalize  = require("file_handler.normalize")
 local TextParser = require("parsers.text_pipeline")
 local Capture    = require("parsers.text_pipeline.capture")
 
-local IngestV2   = require("ingestion_v2.adapter")
+local IngestV2   = require("ingestion.adapter")
 local Stages     = require("tools.inspection.stages")
 
 local Inspector = {}

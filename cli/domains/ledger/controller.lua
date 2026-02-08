@@ -19,8 +19,8 @@ local Store    = Ledger.store
 local Ingest   = Ledger.ingest
 
 -- ingestion services
-local Adapter  = require("ingestion_v2.adapter")
-local Report   = require("ingestion_v2.report")
+local Adapter  = require("ingestion.adapter")
+local Report   = require("ingestion.report")
 
 -- export service
 local Export   = require("ledger.export_csv")

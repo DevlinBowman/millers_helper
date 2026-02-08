@@ -8,7 +8,7 @@
 -- NO aggregation by default.
 -- NO mutation of Boards.
 
-local Adapter = require("ingestion_v2.adapter")
+local Adapter = require("ingestion.adapter")
 
 local Capture = {}
 

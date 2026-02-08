@@ -1,8 +1,8 @@
 -- main.lua
 --
 local I       = require("inspector")
-local Adapter = require("ingestion_v2.adapter")
-local Report  = require("ingestion_v2.report")
+local Adapter = require("ingestion.adapter")
+local Report  = require("ingestion.2report")
 
 local Ledger  = require("ledger")
 local Store   = Ledger.store
