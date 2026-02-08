@@ -6,9 +6,10 @@ local M = {}
 
 M.help = {
     summary = "Compare an order against vendor offers",
-    usage   = "boards compare <order.csv> <offer.csv> <offer.csv> ...",
-    examples = {
-        "boards compare order.csv vendor_a.csv vendor_b.csv",
+    usage   = "boards compare <order.csv> <offer.csv...> [options]",
+    options = {
+        { "-o, --output <path>", "Write output to file (default: stdout)" },
+        { "-f, --format <fmt>",  "Output format: text | json" },
     },
 }
 

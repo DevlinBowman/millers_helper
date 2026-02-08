@@ -5,10 +5,12 @@
 -- Responsibilities:
 --   • Load board data from files
 --   • Produce BoardCapture
---   • Select output shape (summary vs struct)
+--   • Invoke core systems
+--   • Select output sinks
 --
 -- NO ledger logic.
 -- NO mutation.
+-- NO formatting.
 
 local Capture = require("ingestion_v2.board_capture")
 local Report  = require("ingestion_v2.report")
@@ -22,6 +24,29 @@ function Controller.new()
 end
 
 ----------------------------------------------------------------
+-- Helpers
+----------------------------------------------------------------
+
+local function select_sink(ctx)
+    if ctx.flags.output or ctx.flags.o then
+        local FileSink = require("file_handler.sinks.file")
+        return FileSink.new(ctx.flags.output or ctx.flags.o)
+    end
+
+    return require("file_handler.sinks.stdout")
+end
+
+local function emit_lines(sink, lines)
+    for _, line in ipairs(lines or {}) do
+        sink:write(line)
+    end
+
+    if type(sink.close) == "function" then
+        sink:close()
+    end
+end
+
+----------------------------------------------------------------
 -- Load
 ----------------------------------------------------------------
 
@@ -30,17 +55,15 @@ function Controller:load(ctx)
         return ctx:usage()
     end
 
-    local paths = ctx.positionals
+    local capture = Capture.load(ctx.positionals)
 
-    local capture = Capture.load(paths)
-
-    -- default: structured output (Inspector)
+    -- structured inspector output
     if ctx.flags.struct or ctx.flags.s then
         Printer.struct(capture)
         return
     end
 
-    -- otherwise: show per-source ingestion reports
+    -- per-source ingestion reports
     for _, src in ipairs(capture.sources) do
         Report.print({
             meta     = src.meta,
@@ -65,82 +88,92 @@ function Controller:compare(ctx)
 
     local order_path  = ctx.positionals[1]
     local offer_paths = {}
-
     for i = 2, #ctx.positionals do
         offer_paths[#offer_paths + 1] = ctx.positionals[i]
     end
 
-    local Capture = require("ingestion_v2.board_capture")
+    local Boards = require("app.controller.boards")
 
-    local CompareInput = require(
-        "presentation.exports.compare.from_capture"
-    )
-    local CompareModel = require(
-        "presentation.exports.compare.model"
-    )
-    local ComparePrinter = require(
-        "presentation.exports.compare.printer"
+    local format =
+        ctx.flags.format
+        or ctx.flags.f
+        or "text"
+
+    local ok, result = pcall(
+        Boards.compare,
+        order_path,
+        offer_paths,
+        { format = format }
     )
 
-    -- Load order (single source)
-    local order_capture = Capture.load(order_path)
-
-    if #order_capture.sources ~= 1 then
-        ctx:die("order capture must contain exactly one source")
+    if not ok then
+        ctx:die(result)
     end
 
-    local order_source = order_capture.sources[1]
+    local sink = select_sink(ctx)
 
-    -- Load offers (multiple sources)
-    local offers_capture = Capture.load(offer_paths)
+    if result.kind == "text" then
+        emit_lines(sink, result.lines)
 
-    local compare_input = CompareInput.build_input(
-        offers_capture,
-        {
-            id     = order_path,
-            boards = order_source.boards.data,
-        }
-    )
+    elseif result.kind == "json" then
+        local JsonWriter = require("file_handler.writers.json")
+        JsonWriter.write(
+            ctx.flags.output or ctx.flags.o or "/dev/stdout",
+            result.data
+        )
 
-    local model = CompareModel.build(compare_input)
-
-    ComparePrinter.print(model)
+    else
+        ctx:die("unknown output kind: " .. tostring(result.kind))
+    end
 end
 
 ----------------------------------------------------------------
 -- Invoice
 ----------------------------------------------------------------
+-- NOTE:
+-- Invoice still uses printer-based output.
+-- It should be migrated to the same format + sink flow
+-- when you are ready to unify output behavior.
+
 
 function Controller:invoice(ctx)
     if #ctx.positionals ~= 1 then
         return ctx:usage()
     end
 
-    local path = ctx.positionals[1]
+    local Boards = require("app.controller.boards")
+    local path   = ctx.positionals[1]
 
-    local Capture = require("ingestion_v2.board_capture")
+    local format =
+        ctx.flags.format
+        or ctx.flags.f
+        or "text"
 
-    local InvoiceInput = require(
-        "presentation.exports.invoice.from_capture"
+    local ok, result = pcall(
+        Boards.invoice,
+        path,
+        { format = format }
     )
-    local InvoiceModel = require(
-        "presentation.exports.invoice.model"
-    )
-    local InvoicePrinter = require(
-        "presentation.exports.invoice.printer"
-    )
 
-    local capture = Capture.load(path)
-
-    if #capture.sources ~= 1 then
-        ctx:die("invoice requires exactly one input source")
+    if not ok then
+        ctx:die(result)
     end
 
-    local input = InvoiceInput.build_input(capture)
+    local sink = select_sink(ctx)
 
-    local invoice = InvoiceModel.build(input)
+    if result.kind == "text" then
+        emit_lines(sink, result.lines)
 
-    InvoicePrinter.print(invoice)
+    elseif result.kind == "json" then
+        local JsonWriter = require("file_handler.writers.json")
+        JsonWriter.write(
+            ctx.flags.output or ctx.flags.o or "/dev/stdout",
+            result.data
+        )
+
+    else
+        ctx:die("unknown output kind: " .. tostring(result.kind))
+    end
 end
 
 ----------------------------------------------------------------
@@ -155,16 +188,16 @@ function Controller:inspect(ctx)
     local capture = Capture.load(ctx.positionals)
 
     local out = {
-        kind = "boards_summary",
+        kind    = "boards_summary",
         sources = {},
         totals  = capture.meta,
     }
 
     for _, src in ipairs(capture.sources) do
         out.sources[#out.sources + 1] = {
-            source = src.source_id,
-            boards = #src.boards.data,
-            errors = #src.signals.errors,
+            source   = src.source_id,
+            boards   = #src.boards.data,
+            errors   = #src.signals.errors,
             warnings = #src.signals.warnings,
         }
     end
