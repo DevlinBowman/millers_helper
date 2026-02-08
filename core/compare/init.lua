@@ -1,4 +1,4 @@
--- core/compare/index.lua
+-- core/compare/init.lua
 
 local Input  = require("core.compare.input")   -- later
 local Model  = require("core.compare.model")

@@ -1,4 +1,4 @@
--- presentation/exports/compare/from_capture.lua
+-- presentation/exports/compare/input.lua
 --
 -- Adapts BoardCapture into Compare input contract.
 -- Ensures boards are in the same grouped Board shape used by invoice.
