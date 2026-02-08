@@ -90,17 +90,30 @@ function Parser.parse(argv, opts)
                 end
             end
 
-        -- short flag(s)
+            -- short flag(s)
         elseif arg:sub(1, 1) == "-" and #arg > 1 then
             local body = arg:sub(2)
 
-            -- split combined flags: -ckv => c=true, k=true, v=true
-            for i = 1, #body do
-                local ch = body:sub(i, i)
-                flags[ch] = true
+            -- single short flag: -o <value> OR -v
+            if #body == 1 then
+                local key = body
+
+                -- value form: -o <value>
+                if #args > 0 and not is_flag(args[1]) then
+                    flags[key] = take(args)
+                else
+                    flags[key] = true
+                end
+
+                -- combined flags: -ckv
+            else
+                for i = 1, #body do
+                    local ch = body:sub(i, i)
+                    flags[ch] = true
+                end
             end
 
-        -- positional
+            -- positional
         else
             positionals[#positionals + 1] = arg
         end
