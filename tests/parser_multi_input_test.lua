@@ -3,7 +3,7 @@
 -- Parser must never crash on line-based inputs.
 -- No semantic expectations.
 
-local Read       = require("file_handler")
+local Read       = require("io.read")
 local TextParser = require("parsers.text_pipeline")
 local H          = require("tests._helpers")
 

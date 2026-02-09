@@ -6,8 +6,8 @@
 --   ctx.state  : table (targets mutate this)
 --   ctx.fns.*  : optional helper functions (pure, callable by targets)
 
-local Read       = require("file_handler")
-local Normalize  = require("file_handler.normalize")
+local Read       = require("io.read")
+local Normalize  = require("io.normalize")
 local ReaderV2   = require("ingestion.reader")
 local AdapterV2  = require("ingestion.adapter")
 local ParserCap  = require("parsers.text_pipeline.capture")

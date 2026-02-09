@@ -8,8 +8,8 @@
 --   • Single source of truth = ingestion_v2
 --   • Stable state keys for debug.view
 
-local Read       = require("file_handler")
-local Normalize  = require("file_handler.normalize")
+local Read       = require("io.read")
+local Normalize  = require("io.normalize")
 local TextParser = require("parsers.text_pipeline")
 local Capture    = require("parsers.text_pipeline.capture")
 

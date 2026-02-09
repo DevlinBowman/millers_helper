@@ -2,7 +2,7 @@
 --
 -- Parser must not crash on any known text input.
 
-local Read       = require("file_handler")
+local Read       = require("io.read")
 local TextParser = require("parsers.text_pipeline")
 local H          = require("tests._helpers")
 

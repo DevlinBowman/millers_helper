@@ -6,7 +6,7 @@
 --   • mutates ctx.state
 --   • never returns values
 
-local Read       = require("file_handler")
+local Read       = require("io.read")
 local ReaderV2   = require("ingestion.reader")
 local AdapterV2  = require("ingestion.adapter")
 
