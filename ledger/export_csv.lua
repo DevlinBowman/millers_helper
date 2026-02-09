@@ -13,7 +13,7 @@
 -- NO schema inference
 -- NO mutation
 
-local File = require("file_handler")
+local IO = require('io')
 
 local Export = {}
 
@@ -134,9 +134,9 @@ function Export.write_csv(ledger, path)
     end
 
     ----------------------------------------------------------------
-    -- 3) Write via file_handler
+    -- 3) Write via IO
     ----------------------------------------------------------------
-    local result, err = File.write(path, "table", {
+    local result, err = IO.write(path, "table", {
         header = header,
         rows   = rows,
     })
