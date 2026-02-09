@@ -6,30 +6,24 @@
 
 local Interface = require("interface")
 
-local argv = { ... }
+local raw_argv = { ... }
 
--- Detect interface mode flags early
 local use_menu = false
-local filtered = {}
+local argv = {}
 
-for i = 1, #argv do
-    local a = argv[i]
+for i = 1, #raw_argv do
+    local a = raw_argv[i]
     if a == "-m" or a == "--menu" then
         use_menu = true
     else
-        filtered[#filtered + 1] = a
+        argv[#argv + 1] = a
     end
 end
 
--- Inject mode hint (non-invasive)
-if use_menu then
-    filtered.mode = "tui"
-else
-    filtered.mode = "cli"
-end
+local mode = use_menu and "tui" or "cli"
 
 local ok, err = pcall(function()
-    Interface.run(filtered)
+    Interface.run(argv, { mode = mode })
 end)
 
 if not ok then
