@@ -266,7 +266,7 @@ end
 ---@param s string
 ---@return string
 local function escape_string(s)
-    return s
+    s = s
         :gsub('\\', '\\\\')
         :gsub('"', '\\"')
         :gsub('\b', '\\b')
@@ -274,6 +274,8 @@ local function escape_string(s)
         :gsub('\n', '\\n')
         :gsub('\r', '\\r')
         :gsub('\t', '\\t')
+
+    return s
 end
 
 ---@param t table
@@ -298,19 +300,15 @@ local function encode(v)
 
     if t == "nil" then
         return "null"
-
     elseif t == "number" then
         if v ~= v or v == math.huge or v == -math.huge then
             error("invalid JSON number")
         end
         return tostring(v)
-
     elseif t == "boolean" then
         return tostring(v)
-
     elseif t == "string" then
         return '"' .. escape_string(v) .. '"'
-
     elseif t == "table" then
         local out = {}
 
@@ -329,7 +327,6 @@ local function encode(v)
             end
             return "{" .. table.concat(out, ",") .. "}"
         end
-
     else
         error("unsupported JSON type: " .. t)
     end
