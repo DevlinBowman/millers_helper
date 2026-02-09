@@ -2,7 +2,7 @@
 --
 local I       = require("inspector")
 local Adapter = require("ingestion.adapter")
-local Report  = require("ingestion.2report")
+local Report  = require("ingestion.report")
 
 local Ledger  = require("ledger")
 local Store   = Ledger.store
