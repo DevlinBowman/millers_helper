@@ -8,7 +8,7 @@
 --   • This module CATCHES and returns (nil, err)
 --   • Successful writes return metadata only
 
-local FS = require("io.fs")
+local FS = require("io.helpers.fs")
 
 local Text      = require("io.codecs.text")
 local Delimited = require("io.codecs.delimited")
@@ -62,21 +62,31 @@ function Write.write(path, kind, data)
         return nil, "unsupported write kind: " .. tostring(kind)
     end
 
-    FS.ensure_parent_dir(path)
-
-    -- Codec boundary: catch throws
-    local ok, thrown = pcall(writer, path, data, ext:lower())
-    if not ok then
-        return nil, thrown
+    local ok_dir, dir_err = pcall(FS.ensure_parent_dir, path)
+    if not ok_dir then
+        return nil, "failed to ensure output directory: " .. tostring(dir_err)
     end
 
-    ---@type IOWriteMeta
+    local ok, result_or_err = pcall(writer, path, data, ext:lower())
+    if not ok then
+        return nil, result_or_err
+    end
+
+    if result_or_err ~= true then
+        return nil, "writer did not signal success (returned " .. tostring(result_or_err) .. ")"
+    end
+
+    local size = FS.file_size(path)
+    if not size or size <= 0 then
+        return nil, "write completed but file is missing or empty"
+    end
+
     return {
         path       = path,
         ext        = ext:lower(),
-        size_bytes = FS.file_size(path),
+        size_bytes = size,
         hash       = FS.file_hash(path),
-        write_time = tostring(os.date("%Y-%m-%d %H:%M:%S")),
+        write_time = os.date("%Y-%m-%d %H:%M:%S"),
     }
 end
 
