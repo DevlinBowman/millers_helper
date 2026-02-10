@@ -5,7 +5,7 @@
 --   Preserve numeric array keys as numbers (not strings),
 --   otherwise dofile() reload breaks ipairs/# and dedupe.
 
-local LedgerDef = require("ledger.ledger")
+local LedgerDef = require("core.ledger.internal.model.ledger")
 
 local Store = {}
 

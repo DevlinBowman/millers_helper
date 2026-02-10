@@ -17,7 +17,7 @@
 --   • boards.data
 --   • #boards.data
 
-local Identity = require("ledger.identity")
+local Identity = require("core.ledger.internal.model.identity")
 
 local Ingest = {}
 

@@ -12,7 +12,7 @@
 -- This is the ONLY place ledger behavior is orchestrated for the CLI.
 -- Ledger services themselves remain pure and interface-agnostic.
 
-local Ledger = require("ledger")
+local Ledger = require("core.ledger")
 
 -- ledger services
 local Store    = Ledger.store
@@ -23,12 +23,12 @@ local Adapter  = require("ingestion.adapter")
 local Report   = require("ingestion.report")
 
 -- export service
-local Export   = require("ledger.export_csv")
+local Export   = require("core.ledger.view.exports.csv")
 
 -- analysis services
-local Summary  = require("ledger.analysis.summary")
-local Keys     = require("ledger.analysis.keys")
-local Describe = require("ledger.analysis.describe")
+local Summary  = require("core.ledger.analysis.summary")
+local Keys     = require("core.ledger.analysis.keys")
+local Describe = require("core.ledger.analysis.describe")
 
 -- CLI core output
 local Printer  = require("interface.core.printer")

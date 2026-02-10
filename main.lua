@@ -4,7 +4,7 @@ local I       = require("inspector")
 local Adapter = require("ingestion.adapter")
 local Report  = require("ingestion.report")
 
-local Ledger  = require("ledger")
+local Ledger  = require("core.ledger")
 local Store   = Ledger.store
 local Ingest  = Ledger.ingest
 
