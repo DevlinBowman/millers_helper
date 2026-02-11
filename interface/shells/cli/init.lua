@@ -16,10 +16,12 @@ local Parser   = require("interface.shells.cli.parser")
 local Registry = require("interface.registry")
 local Context  = require("interface.context")
 local Help     = require("interface.shells.cli.help")
+local Completion = require("interface.shells.cli.completion")
 
 -- Load domains (self-register)
 require("interface.domains.ledger")
 require("interface.domains.boards")
+require("interface.domains.completions")
 
 local CLI = {}
 
@@ -45,6 +47,10 @@ end
 
 function CLI.run(argv)
     argv = argv or {}
+
+    if argv[1] == "__complete" then
+        return Completion.run({ table.unpack(argv, 2) })
+    end
 
     ----------------------------------------------------------------
     -- Global help (no args or help flags)
