@@ -8,11 +8,12 @@
 --   • This module CATCHES and returns (nil, err)
 --   • Successful reads return codec result + metadata
 
-local FS = require("io.helpers.fs")
+local FS        = require("io.helpers.fs")
 
 local Text      = require("io.codecs.text")
 local Delimited = require("io.codecs.delimited")
 local Json      = require("io.codecs.json")
+local Lua       = require("io.codecs.lua")
 
 
 local Read = {}
@@ -37,6 +38,10 @@ local DISPATCH = {
 
     txt = function(path)
         return Text.read(path)
+    end,
+
+    lua = function(path)
+        return Lua.read(path)
     end,
 }
 

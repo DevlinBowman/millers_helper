@@ -1,133 +1,69 @@
 -- io/controller.lua
 --
 -- Public IO control surface.
--- This is the ONLY supported external entrypoint.
---
--- Policy:
---   • Default functions are RELAXED (return nil, err)
---   • STRICT variants throw on failure
---   • Call-site intent is explicit
+-- Pure IO: no formatting, no normalization, no semantic helpers.
 
 local Registry = require("io.registry")
+local Validate = Registry.validate.input
 
 local Controller = {}
 
 ----------------------------------------------------------------
---- Read (RELAXED / backwards compatible)
+-- Read (RELAXED)
 ----------------------------------------------------------------
 
---- Read a file and return the raw codec result.
+--- Read a file and return raw codec output.
 ---@param path string
 ---@return table|nil result
 ---@return string|nil err
 function Controller.read(path)
+    local ok, err = Validate.read({
+        mode   = "read",
+        source = { kind = "path", value = path },
+    })
+    if not ok then
+        return nil, err
+    end
+
     return Registry.read.read(path)
 end
 
+----------------------------------------------------------------
+-- Write (RELAXED)
+----------------------------------------------------------------
+
+--- Write already-formatted payload.
 ---@param path string
----@return IOTableResult|nil
----@return string|nil err
--- for if caller expects tabular data
-function Controller.read_table(path)
-    local result, err = Registry.read.read(path)
-    if not result then
-        return nil, err
-    end
-
-    if result.kind ~= "table" then
-        return nil, "expected table input"
-    end
-
-    return result
-end
-
-----------------------------------------------------------------
--- Read + normalize (RELAXED)
-----------------------------------------------------------------
-
---- Read a file and normalize into records when possible.
----@param path string
----@return table|nil records
----@return string|nil err
-function Controller.read_records(path)
-    local result, err = Registry.read.read(path)
-    if not result then
-        return nil, err
-    end
-
-    if result.kind == "table" then
-        return Registry.normalize.table(result)
-    elseif result.kind == "json" then
-        return Registry.normalize.json(result)
-    else
-        return nil, "unsupported normalization kind: " .. tostring(result.kind)
-    end
-end
-
-----------------------------------------------------------------
--- Write (RELAXED / backwards compatible)
-----------------------------------------------------------------
-
---- Write structured data to disk.
----@param path string
----@param kind string
----@param data any
+---@param payload table
 ---@return table|nil meta
 ---@return string|nil err
-function Controller.write(path, kind, data)
-    return Registry.write.write(path, kind, data)
+function Controller.write(path, payload)
+    local ok, err = Validate.write({
+        mode   = "write",
+        source = { kind = "path", value = path },
+        data   = payload,
+    })
+    if not ok then
+        return nil, err
+    end
+
+    return Registry.write.write(path, payload)
 end
 
 ----------------------------------------------------------------
--- STRICT variants (opt-in)
+-- STRICT variants
 ----------------------------------------------------------------
 
---- Read a file (STRICT).
---- Throws on failure.
----@param path string
----@return table result
 function Controller.read_strict(path)
-    local result, err = Registry.read.read(path)
+    local result, err = Controller.read(path)
     if not result then
         error(err, 2)
     end
     return result
 end
 
---- Read table input (STRICT).
----@param path string
----@return IOTableResult
-function Controller.read_table_strict(path)
-    local result, err = Registry.read.read(path)
-    if not result then
-        error(err, 2)
-    end
-
-    if result.kind ~= "table" then
-        error("expected table input, got " .. tostring(result.kind), 2)
-    end
-
-    return result
-end
-
---- Read and normalize records (STRICT).
----@param path string
----@return table records
-function Controller.read_records_strict(path)
-    local records, err = Controller.read_records(path)
-    if not records then
-        error(err, 2)
-    end
-    return records
-end
-
---- Write structured data to disk (STRICT).
----@param path string
----@param kind string
----@param data any
----@return table meta
-function Controller.write_strict(path, kind, data)
-    local meta, err = Registry.write.write(path, kind, data)
+function Controller.write_strict(path, payload)
+    local meta, err = Controller.write(path, payload)
     if not meta then
         error(err, 2)
     end
@@ -135,24 +71,19 @@ function Controller.write_strict(path, kind, data)
 end
 
 ----------------------------------------------------------------
--- Stream lines to a sink (RELAXED but validated)
+-- Streaming utility
 ----------------------------------------------------------------
 
---- Stream iterable lines to a sink.
----@param iter fun(): any|nil
----@param sink table  -- must support :write()
----@return true
 function Controller.stream(iter, sink)
     assert(type(iter) == "function", "iter must be function")
     assert(type(sink) == "table" and sink.write, "sink must support :write()")
 
     while true do
         local v = iter()
-        if v == nil then
-            break
-        end
+        if v == nil then break end
         sink:write(v)
     end
+
     return true
 end
 

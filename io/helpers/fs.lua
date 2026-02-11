@@ -44,6 +44,41 @@ end
 -- Existence / directory helpers
 ----------------------------------------------------------------
 
+--- Check whether path is a directory.
+--- Check whether a path is a directory (POSIX-safe).
+---@param path string
+---@return boolean
+function FS.is_dir(path)
+    local ok = os.execute(string.format('[ -d %q ]', path))
+    return ok == true or ok == 0
+end
+
+--- List regular files inside a directory (non-recursive).
+---@param path string
+---@return string[]|nil files
+---@return string|nil err
+function FS.list_dir(path)
+    if not FS.is_dir(path) then
+        return nil, "not a directory: " .. tostring(path)
+    end
+
+    local files = {}
+    local handle = io.popen(string.format('ls -1 %q', path))
+    if not handle then
+        return nil, "failed to list directory"
+    end
+
+    for name in handle:lines() do
+        local full = path .. "/" .. name
+        if FS.file_exists(full) then
+            files[#files + 1] = full
+        end
+    end
+
+    handle:close()
+    return files
+end
+
 --- Check whether a file exists and is not a directory.
 ---
 --- Uses os.rename semantics:
