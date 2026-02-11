@@ -1,55 +1,69 @@
 -- ingestion/reader.lua
---
--- Responsibility:
---   Read a file and return raw structured data.
---   NO validation
---   NO board logic
---   NO format-specific branching outside IO contract
 
-local Read = require("io.read")
-local Normalize  = require("io.normalize")
+local Read       = require("io.read.read")
+local Format     = require("format.controller")
 local TextParser = require("parsers.text_pipeline")
 
 local Reader = {}
 
 ---@param path string
 ---@param opts table|nil
----@return { kind: "records", data: table[], meta: table }
+---@return { kind:string, data:table[], meta:table }
 function Reader.read(path, opts)
     opts = opts or {}
 
-    -- IO boundary (format-agnostic)
+    ----------------------------------------------------------------
+    -- IO boundary
+    ----------------------------------------------------------------
+
     local raw, err = Read.read(path)
     assert(raw, err)
 
-    local records
+    local formatted
 
-    if raw.kind == "lines" then
-        -- freeform text → parser-owned normalization
-        records = TextParser.run(raw.data, opts)
+    ----------------------------------------------------------------
+    -- Structured → records
+    ----------------------------------------------------------------
 
-    elseif raw.kind == "table" then
-        -- structured tabular → records
-        records = Normalize.table(raw)
+    if raw.kind == "table" then
+        formatted = Format.to_records_strict("table", raw.data)
 
     elseif raw.kind == "json" then
-        -- structured json → records
-        local norm, nerr = Normalize.json(raw)
-        assert(norm, nerr)
-        records = norm
+        formatted = Format.to_records_strict("json", raw.data)
+
+    ----------------------------------------------------------------
+    -- Freeform text → parser-owned
+    ----------------------------------------------------------------
+
+    elseif raw.kind == "lines" then
+        formatted = TextParser.run(raw.data, opts)
+
+        -- normalize parser output to old envelope shape
+        if formatted and formatted.records then
+            formatted = {
+                kind = "records",
+                data = formatted.records,
+                meta = formatted.meta or {},
+            }
+        end
 
     else
         error("unsupported input kind: " .. tostring(raw.kind))
     end
 
-    assert(records.kind == "records", "reader must return kind='records'")
+    assert(formatted, "formatting failed")
+    assert(formatted.kind == "records", "reader must return kind='records'")
+    assert(type(formatted.data) == "table", "reader must return data=array")
 
-    -- ingestion-owned metadata enrichment
-    records.meta = records.meta or {}
-    records.meta.source_path = path
-    records.meta.input_kind  = raw.kind
+    ----------------------------------------------------------------
+    -- Metadata enrichment
+    ----------------------------------------------------------------
 
-    return records
+    formatted.meta = formatted.meta or {}
+    formatted.meta.source_path = path
+    formatted.meta.input_kind  = raw.kind
+
+    return formatted
 end
 
 return Reader
