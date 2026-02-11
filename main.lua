@@ -1,56 +1,28 @@
 -- main.lua
 --
-local I       = require("inspector")
-local Adapter = require("ingestion.adapter")
-local Report  = require("ingestion.report")
+local I           = require("inspector")
+local Adapter     = require("ingestion.adapter")
+local Report      = require("ingestion.report")
 
-local Ledger  = require("core.ledger")
-local Store   = Ledger.store
-local Ingest  = Ledger.ingest
+local Ledger      = require("core.ledger")
 
 -- local INPUT       = "tests/data_format/old_sheet.csv"
--- local INPUT       = "tests/data_format/input.txt"
-local INPUT       = "tests/data_format/test_lumber.json"
-local LEDGER_PATH = "data/ledger.lua"
-
-local ingest_result = assert(Adapter.ingest(INPUT))
-
--- Always show a clean summary
--- Report.print(ingest_result)
-
--- Boards only (authoritative payload)
-local boards = ingest_result.boards.data
-I.print(boards)
-
--- Ledger sees BOARDS ONLY
--- local ledger = Store.load(LEDGER_PATH)
--- local report = Ingest.run(
---     ledger,
---     { kind = "boards", data = boards },
---     { path = INPUT }
--- )
+-- local INPUT       = "tests/data_format/input.txt":w
 --
--- Store.save(LEDGER_PATH, ledger)
---
--- I.print(report)
---
--- High-level
--- I.print(Ledger.inspect.summary(ledger))
+local test_inputs = {
+    -- '/Users/ven/Desktop/2026-lumber-app-v2/data/test_inputs/input.txt',
+    '/Users/ven/Desktop/2026-lumber-app-v2/data/test_inputs/test_lumber.csv',
+    -- '/Users/ven/Desktop/2026-lumber-app-v2/data/test_inputs/test_lumber.json',
+    -- '/Users/ven/Desktop/2026-lumber-app-v2/data/test_inputs/test_lumber.txt'
+}
 
--- Spreadsheet-like view
--- I.print(Ledger.inspect.list_facts(ledger))
+local IO          = require('io.controller')
 
--- Drill into one fact
--- I.print(Ledger.inspect.fact(ledger, 1))
 
--- Filter by source file
--- I.print(Ledger.inspect.by_source(ledger, "tests/data_format/input.txt"))
---
--- I.print(Ledger.inspect.overview(ledger))
---
--- local Export = require("ledger.export_csv")
---
--- local ok, err = Export.write_csv(ledger, "data/ledger_export.csv")
---
--- assert(ok, err)
+for i, file in pairs(test_inputs) do
+    print(file)
+    -- local data = IO.read(file)
+    local data = Adapter.ingest(file)
+    I.print(data, {shape_only = true})
+end
 
