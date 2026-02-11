@@ -13,7 +13,7 @@
 -- NO schema inference
 -- NO mutation
 
-local IO = require('io')
+local IO = require('io.write.write')
 
 local Export = {}
 
