@@ -60,7 +60,7 @@ end
 banner("WRITE")
 
 do
-    local meta = IO.write_strict("out/test.json", {
+    local meta = IO.write_strict("data/out/test.json", {
         kind = "json",
         data = { a = 1, b = true }
     })
@@ -69,7 +69,7 @@ do
 end
 
 do
-    local meta = IO.write_strict("out/test.txt", {
+    local meta = IO.write_strict("data/out/test.txt", {
         kind = "lines",
         data = { "a", "b", "c" }
     })
@@ -78,7 +78,7 @@ do
 end
 
 do
-    local meta = IO.write_strict("out/test.lua", {
+    local meta = IO.write_strict("data/out/test.lua", {
         kind = "lua",
         data = { x = 10 }
     })
@@ -87,7 +87,7 @@ do
 end
 
 do
-    local meta, err = IO.write("out/test.invalid", {
+    local meta, err = IO.write("data/out/test.invalid", {
         kind = "invalid",
         data = {}
     })
@@ -98,7 +98,7 @@ end
 
 do
     local ok_throw = pcall(function()
-        IO.write_strict("out/test.invalid", {
+        IO.write_strict("data/out/test.invalid", {
             kind = "invalid",
             data = {}
         })
@@ -145,14 +145,14 @@ end
 banner("ROUNDTRIP")
 
 do
-    local result = IO.read_strict("out/test.json")
+    local result = IO.read_strict("data/out/test.json")
     assert(result.kind == "json")
     assert(result.data.a == 1)
     ok("json roundtrip")
 end
 
 do
-    local result = IO.read_strict("out/test.lua")
+    local result = IO.read_strict("data/out/test.lua")
     assert(result.kind == "lua")
     assert(result.data.x == 10)
     ok("lua roundtrip")
