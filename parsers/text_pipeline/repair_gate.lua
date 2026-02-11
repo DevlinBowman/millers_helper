@@ -5,6 +5,7 @@
 --   • Repair ONLY if required dims are missing
 --   • Stable spans are HARD barriers
 
+-- #TODO: There exists no validation layer to stop totally bad text data from getting here
 local Stable = require("parsers.text_pipeline.stable_spans")
 
 local Gate = {}
