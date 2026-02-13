@@ -48,6 +48,10 @@ Controller.CONTRACT = {
 -- Decode (codec → objects)
 ----------------------------------------------------------------
 
+----------------------------------------------------------------
+-- Decode (codec → canonical objects)
+----------------------------------------------------------------
+
 function Controller.decode(codec, data)
 
     Trace.contract_enter("format.controller.decode")
@@ -69,7 +73,7 @@ function Controller.decode(codec, data)
     end
 
     ----------------------------------------------------------------
-    -- Decode to canonical objects
+    -- Decode raw codec data → canonical objects
     ----------------------------------------------------------------
 
     local objects, decode_err = decoder.run(data)
@@ -77,12 +81,6 @@ function Controller.decode(codec, data)
         Trace.contract_leave()
         return nil, decode_err
     end
-
-    ----------------------------------------------------------------
-    -- Canonical hygiene
-    ----------------------------------------------------------------
-
-    objects = Registry.normalize.clean.apply("objects", objects)
 
     ----------------------------------------------------------------
     -- Canonical shape guard
@@ -95,7 +93,13 @@ function Controller.decode(codec, data)
     end
 
     ----------------------------------------------------------------
-    -- Output envelope
+    -- Canonical hygiene (MANDATORY, post-creation)
+    ----------------------------------------------------------------
+
+    Registry.normalize.clean.apply("objects", objects)
+
+    ----------------------------------------------------------------
+    -- Output envelope (codec only — no 'kind')
     ----------------------------------------------------------------
 
     local out = {
@@ -103,11 +107,14 @@ function Controller.decode(codec, data)
         data  = objects,
     }
 
-    -- enforce invariant (contract only checks presence)
-    assert(out.codec == "objects", "decode must return codec='objects'")
+    Trace.contract_out(
+        Controller.CONTRACT.decode.out,
+        codec,
+        "caller"
+    )
 
-    Trace.contract_out(Controller.CONTRACT.decode.out, codec, "caller")
     Contract.assert(out, Controller.CONTRACT.decode.out)
+
     Trace.contract_leave()
 
     return out
