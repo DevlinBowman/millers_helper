@@ -1,0 +1,4 @@
+.DS_Store
+data/
+tests/data_format/
+deprecated/
