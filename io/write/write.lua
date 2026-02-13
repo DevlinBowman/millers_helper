@@ -10,6 +10,10 @@ local Lua   = require("io.codecs.lua")
 
 local Write = {}
 
+----------------------------------------------------------------
+-- Finalize metadata
+----------------------------------------------------------------
+
 local function finalize(path)
     local size = FS.file_size(path)
     if not size or size <= 0 then
@@ -24,6 +28,10 @@ local function finalize(path)
         write_time = os.date("%Y-%m-%d %H:%M:%S"),
     }
 end
+
+----------------------------------------------------------------
+-- Raw helpers
+----------------------------------------------------------------
 
 function Write.raw(path, bytes)
     local fh, err = io.open(path, "w")
@@ -40,6 +48,10 @@ end
 function Write.json(path, value)
     return Json.write(path, value)
 end
+
+----------------------------------------------------------------
+-- Public write boundary
+----------------------------------------------------------------
 
 ---@param path string
 ---@param payload { codec:string, data:any }
@@ -99,24 +111,25 @@ function Write.write(path, payload)
             return true
         end
 
-        if codec == "table" then
+        if codec == "delimited" then
             if type(data) ~= "table"
                 or type(data.header) ~= "table"
                 or type(data.rows) ~= "table"
             then
                 return nil,
-                    "table codec requires { header=string[], rows=string[][] }"
+                    "delimited codec requires { header=string[], rows=string[][] }"
             end
             return true
         end
 
         if codec == "json" then
-            -- JSON encoder enforces validity
             return true
         end
 
         if codec == "lua" then
-            -- Lua codec enforces literal safety
+            if type(data) ~= "table" then
+                return nil, "lua codec requires table"
+            end
             return true
         end
 
@@ -152,7 +165,7 @@ function Write.write(path, payload)
     elseif payload.codec == "lua" then
         ok, err = pcall(Lua.write, path, payload.data)
 
-    elseif payload.codec == "table" then
+    elseif payload.codec == "delimited" then
         local Delimited = require("io.codecs.delimited")
         ok, err = pcall(
             Delimited.write,
@@ -170,25 +183,10 @@ function Write.write(path, payload)
     end
 
     ----------------------------------------------------------------
-    -- Post-write verification
-    ----------------------------------------------------------------
-
-    local size = FS.file_size(path)
-    if not size or size <= 0 then
-        return nil, "write verification failed: file empty"
-    end
-
-    ----------------------------------------------------------------
     -- Finalize metadata
     ----------------------------------------------------------------
 
-    return {
-        path       = path,
-        ext        = FS.get_extension(path):lower(),
-        size_bytes = size,
-        hash       = FS.file_hash(path),
-        write_time = os.date("%Y-%m-%d %H:%M:%S"),
-    }
+    return finalize(path)
 end
 
 return Write

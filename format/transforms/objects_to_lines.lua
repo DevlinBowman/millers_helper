@@ -1,6 +1,6 @@
--- format/transforms/object_array_to_lines.lua
+-- format/transforms/objects_to_lines.lua
 
-local Shape = require('format.validate.shape')
+local Shape = require("format.validate.shape")
 
 local M = {}
 
@@ -19,15 +19,15 @@ local function stringify_object(obj)
     return table.concat(parts, " ")
 end
 
-function M.run(object_array)
+function M.run(objects)
 
-    if not Shape.object_array(object_array) then
-        return nil, "invalid object_array shape"
+    if not Shape.objects(objects) then
+        return nil, "invalid objects shape"
     end
 
     local lines = {}
 
-    for _, obj in ipairs(object_array) do
+    for _, obj in ipairs(objects) do
         lines[#lines + 1] = stringify_object(obj)
     end
 

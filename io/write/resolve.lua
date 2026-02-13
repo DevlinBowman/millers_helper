@@ -16,11 +16,11 @@ function Resolve.codec(path)
     ext = ext:lower()
 
     if ext == "csv" then
-        return { codec = "table", opts = { sep = "," } }
+        return { codec = "delimited", opts = { sep = "," } }
     end
 
     if ext == "tsv" then
-        return { codec = "table", opts = { sep = "\t" } }
+        return { codec = "delimited", opts = { sep = "\t" } }
     end
 
     if ext == "txt" then

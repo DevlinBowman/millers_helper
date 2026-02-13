@@ -14,6 +14,7 @@ Registry.codecs = {
     json      = require("io.codecs.json"),
     delimited = require("io.codecs.delimited"),
     text      = require("io.codecs.text"),
+    lua       = require("io.codecs.lua")
 }
 
 Registry.sinks = {

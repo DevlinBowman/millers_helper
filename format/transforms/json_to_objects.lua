@@ -1,7 +1,6 @@
--- format/transforms/json_to_object_array.lua
+-- format/transforms/json_to_objects.lua
 
-
-local Shape = require('format.validate.shape')
+local Shape = require("format.validate.shape")
 
 local M = {}
 
@@ -11,11 +10,11 @@ function M.run(json_data)
         return nil, "json root must be table"
     end
 
-    if Shape.object_array(json_data) then
+    if Shape.objects(json_data) then
         return json_data
     end
 
-    if Shape.object(json_data) then
+    if type(json_data) == "table" then
         return { json_data }
     end
 

@@ -1,6 +1,6 @@
 -- format/validate/shape.lua
 --
--- Structural shape validation only.
+-- Structural shape validation.
 
 local Shape = {}
 
@@ -37,10 +37,10 @@ function Shape.lines(v)
 end
 
 ----------------------------------------------------------------
--- table (csv logical form)
+-- delimited
 ----------------------------------------------------------------
 
-function Shape.table(v)
+function Shape.delimited(v)
     if type(v) ~= "table" then return false end
     if not is_string_array(v.header) then return false end
     if not is_array(v.rows) then return false end
@@ -59,10 +59,10 @@ function Shape.table(v)
 end
 
 ----------------------------------------------------------------
--- object_array
+-- canonical objects
 ----------------------------------------------------------------
 
-function Shape.object_array(v)
+function Shape.objects(v)
     if not is_array(v) then return false end
     for _, obj in ipairs(v) do
         if type(obj) ~= "table" then
@@ -70,14 +70,6 @@ function Shape.object_array(v)
         end
     end
     return true
-end
-
-----------------------------------------------------------------
--- object
-----------------------------------------------------------------
-
-function Shape.object(v)
-    return type(v) == "table" and not is_array(v)
 end
 
 return Shape

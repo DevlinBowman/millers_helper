@@ -1,32 +1,42 @@
 -- format/controller.lua
 --
--- Structural codec conversion controller.
--- Boundary only.
--- Owns contracts + trace.
--- Delegates orchestration to system.converter.
+-- Canonical hub mapping surface.
+--
+-- Public API:
+--   decode(codec, data)   → { codec="objects", data }
+--   encode(codec, objects) → { codec, data }
+--
+-- Boundary owns contracts + trace only.
 
-local Registry  = require("format.registry")
-local Converter = require("format.system.converter")
+local Registry = require("format.registry")
 
-local Trace     = require("tools.trace")
-local Contract  = require("core.contract")
+local Trace    = require("tools.trace")
+local Contract = require("core.contract")
 
 local Controller = {}
 
 ----------------------------------------------------------------
--- Contract Definition
+-- Contracts
 ----------------------------------------------------------------
 
 Controller.CONTRACT = {
-    convert = {
-        in_ = {
-            payload = {
-                codec = true,
-                data  = true,
-            },
-            target_codec = true,
-        },
 
+    decode = {
+        in_ = {
+            codec = true,
+            data  = true,
+        },
+        out = {
+            codec = true,
+            data = true,
+        },
+    },
+
+    encode = {
+        in_ = {
+            codec   = true,
+            objects = true,
+        },
         out = {
             codec = true,
             data  = true,
@@ -35,85 +45,137 @@ Controller.CONTRACT = {
 }
 
 ----------------------------------------------------------------
--- Internal guards
+-- Decode (codec → objects)
 ----------------------------------------------------------------
 
-local function assert_string(value, name)
-    if type(value) ~= "string" or value == "" then
-        error("invalid " .. name .. " (expected non-empty string)", 3)
-    end
-end
+function Controller.decode(codec, data)
 
-----------------------------------------------------------------
--- Convert (RELAXED)
-----------------------------------------------------------------
-
----@param payload { codec:string, data:any }
----@param target_codec string
----@return { codec:string, data:any }|nil
----@return string|nil err
-function Controller.convert(payload, target_codec)
-
-    Trace.contract_enter("format.controller.convert")
-    Trace.contract_in(Controller.CONTRACT.convert.in_)
+    Trace.contract_enter("format.controller.decode")
+    Trace.contract_in(Controller.CONTRACT.decode.in_)
 
     Contract.assert(
-        { payload = payload, target_codec = target_codec },
-        Controller.CONTRACT.convert.in_
+        { codec = codec, data = data },
+        Controller.CONTRACT.decode.in_
     )
 
-    -- Guard: codec sanity
-    assert_string(payload.codec, "payload.codec")
-    assert_string(target_codec, "target_codec")
+    ----------------------------------------------------------------
+    -- Decoder lookup
+    ----------------------------------------------------------------
 
-    -- Guard: avoid meaningless self-call
-    if payload.codec == target_codec then
-        Trace.contract_out(
-            Controller.CONTRACT.convert.out,
-            "identity",
-            "caller"
-        )
+    local decoder = Registry.decode[codec]
+    if not decoder then
         Trace.contract_leave()
-        return payload
+        return nil, "no decoder registered for codec '" .. codec .. "'"
     end
 
-    local result, err = Converter.run(payload, target_codec)
-    if not result then
+    ----------------------------------------------------------------
+    -- Decode to canonical objects
+    ----------------------------------------------------------------
+
+    local objects, decode_err = decoder.run(data)
+    if not objects then
         Trace.contract_leave()
-        return nil, err
+        return nil, decode_err
     end
 
-    -- Guard: ensure converter honored target
-    if result.codec ~= target_codec then
+    ----------------------------------------------------------------
+    -- Canonical hygiene
+    ----------------------------------------------------------------
+
+    objects = Registry.normalize.clean.apply("objects", objects)
+
+    ----------------------------------------------------------------
+    -- Canonical shape guard
+    ----------------------------------------------------------------
+
+    local Shape = Registry.validate.shape
+    if not Shape.objects(objects) then
         Trace.contract_leave()
-        return nil,
-            "converter returned mismatched codec: expected '" ..
-            target_codec .. "', got '" .. tostring(result.codec) .. "'"
+        return nil, "decoder produced invalid canonical object shape"
     end
 
-    Trace.contract_out(
-        Controller.CONTRACT.convert.out,
-        payload.codec .. "_to_" .. target_codec,
-        "caller"
-    )
+    ----------------------------------------------------------------
+    -- Output envelope
+    ----------------------------------------------------------------
 
-    Contract.assert(result, Controller.CONTRACT.convert.out)
+    local out = {
+        codec = "objects",
+        data  = objects,
+    }
 
+    -- enforce invariant (contract only checks presence)
+    assert(out.codec == "objects", "decode must return codec='objects'")
+
+    Trace.contract_out(Controller.CONTRACT.decode.out, codec, "caller")
+    Contract.assert(out, Controller.CONTRACT.decode.out)
     Trace.contract_leave()
 
-    return result
+    return out
 end
 
 ----------------------------------------------------------------
--- STRICT
+-- Encode (objects → codec)
 ----------------------------------------------------------------
 
-function Controller.convert_strict(payload, target_codec)
-    local result, err = Controller.convert(payload, target_codec)
-    if not result then
-        error(err, 2)
+function Controller.encode(codec, objects)
+
+    Trace.contract_enter("format.controller.encode")
+    Trace.contract_in(Controller.CONTRACT.encode.in_)
+
+    Contract.assert(
+        { codec = codec, objects = objects },
+        Controller.CONTRACT.encode.in_
+    )
+
+    ----------------------------------------------------------------
+    -- Canonical shape guard
+    ----------------------------------------------------------------
+
+    local Shape = Registry.validate.shape
+    if not Shape.objects(objects) then
+        Trace.contract_leave()
+        return nil, "invalid canonical objects shape"
     end
-    return result
+
+    ----------------------------------------------------------------
+    -- Lookup encoder
+    ----------------------------------------------------------------
+
+    local encoder = Registry.encode[codec]
+
+    local data
+    local err
+
+    if encoder then
+        data, err = encoder.run(objects)
+        if not data then
+            Trace.contract_leave()
+            return nil, err
+        end
+
+    elseif codec == "lua" then
+        -- identity allowed
+        data = objects
+
+    else
+        Trace.contract_leave()
+        return nil, "no encoder registered for codec '" .. codec .. "'"
+    end
+
+    ----------------------------------------------------------------
+    -- Output envelope
+    ----------------------------------------------------------------
+
+    local out = {
+        codec = codec,
+        data  = data,
+    }
+
+    Trace.contract_out(Controller.CONTRACT.encode.out, codec, "caller")
+    Contract.assert(out, Controller.CONTRACT.encode.out)
+    Trace.contract_leave()
+
+    return out
 end
 
 return Controller

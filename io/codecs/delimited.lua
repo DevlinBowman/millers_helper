@@ -89,7 +89,7 @@ function Delimited.read(path)
     end
 
     return {
-        codec = "table",
+        codec = "delimited",
         data  = {
             header = header,
             rows   = rows,

@@ -14,7 +14,7 @@
 --   • Touch meta
 --
 -- Intended use:
---   Normalize payload.data before conversion.
+--   Normalize codec-native data BEFORE decode/encode.
 
 local Clean = {}
 
@@ -38,33 +38,58 @@ local function normalize_string(s)
 end
 
 ----------------------------------------------------------------
+-- Table helpers
+----------------------------------------------------------------
+
+local function is_array(t)
+    if type(t) ~= "table" then return false end
+    local max = 0
+    for k in pairs(t) do
+        if type(k) ~= "number" then return false end
+        if k > max then max = k end
+    end
+    return max == #t
+end
+
+local function looks_like_object_array(t)
+    if not is_array(t) then return false end
+    for i = 1, #t do
+        if type(t[i]) ~= "table" then
+            return false
+        end
+    end
+    return true
+end
+
+----------------------------------------------------------------
 -- Object normalization
 ----------------------------------------------------------------
 
 local function normalize_object(obj)
     local keys = {}
-
-    -- snapshot keys to avoid mutation hazards
     for k in pairs(obj) do
         keys[#keys + 1] = k
     end
 
     for _, raw_key in ipairs(keys) do
         local value = obj[raw_key]
-        local new_key = raw_key
-        local new_val = value
 
+        local new_key = raw_key
         if type(raw_key) == "string" then
             new_key = normalize_string(raw_key)
         end
 
+        local new_val = value
         if type(value) == "string" then
             new_val = normalize_string(value)
         end
 
         if new_key ~= raw_key then
             obj[raw_key] = nil
-            obj[new_key] = new_val
+            -- collision-safe: keep existing if present
+            if obj[new_key] == nil then
+                obj[new_key] = new_val
+            end
         else
             obj[raw_key] = new_val
         end
@@ -77,22 +102,40 @@ end
 
 ---@param codec string
 ---@param data any
----@return any data -- same table (mutated in place)
+---@return any data -- same table (mutated in place where applicable)
 function Clean.apply(codec, data)
-
     if type(data) ~= "table" then
         return data
     end
 
-    if codec == "object_array" then
-        for i = 1, #data do
-            if type(data[i]) == "table" then
+    -- canonical objects
+    if codec == "objects" then
+        if looks_like_object_array(data) then
+            for i = 1, #data do
                 normalize_object(data[i])
             end
+        else
+            -- if someone passes a single object table by mistake,
+            -- still normalize it (harmless, and fixes junk keys/values)
+            normalize_object(data)
         end
+        return data
+    end
 
-    elseif codec == "table" then
-        -- normalize header
+    -- json is decoded to Lua tables by IO; normalize as object(s)
+    if codec == "json" then
+        if looks_like_object_array(data) then
+            for i = 1, #data do
+                normalize_object(data[i])
+            end
+        else
+            normalize_object(data)
+        end
+        return data
+    end
+
+    -- delimited logical table
+    if codec == "delimited" then
         if type(data.header) == "table" then
             for i = 1, #data.header do
                 if type(data.header[i]) == "string" then
@@ -101,7 +144,6 @@ function Clean.apply(codec, data)
             end
         end
 
-        -- normalize rows
         if type(data.rows) == "table" then
             for _, row in ipairs(data.rows) do
                 if type(row) == "table" then
@@ -114,17 +156,20 @@ function Clean.apply(codec, data)
             end
         end
 
-    elseif codec == "lines" then
+        return data
+    end
+
+    -- lines
+    if codec == "lines" then
         for i = 1, #data do
             if type(data[i]) == "string" then
                 data[i] = normalize_string(data[i])
             end
         end
-
-    elseif codec == "object" then
-        normalize_object(data)
+        return data
     end
 
+    -- unknown codec: do nothing
     return data
 end
 

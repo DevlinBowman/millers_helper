@@ -1,17 +1,37 @@
 -- format/registry.lua
 --
--- Internal format facade.
--- Pure capability index.
--- No orchestration.
--- No lazy loading.
--- No transform chaining logic.
+-- Canonical hub registry.
 --
--- Structural Rule:
---   • Registry depends on children
---   • Children MUST NOT depend on registry
---   • Strict downward dependency only
+-- Architecture:
+--   codec → objects  (decode)
+--   objects → codec  (encode)
+--
+-- No graph.
+-- No chaining.
+-- No pathfinding.
+-- Explicit direction only.
 
 local Registry = {}
+
+----------------------------------------------------------------
+-- Decode (codec → canonical objects)
+----------------------------------------------------------------
+
+Registry.decode = {
+    delimited = require("format.transforms.delimited_to_objects"),
+    json      = require("format.transforms.json_to_objects"),
+    lines     = require("format.transforms.lines_to_objects"),
+}
+
+----------------------------------------------------------------
+-- Encode (canonical objects → codec)
+----------------------------------------------------------------
+
+Registry.encode = {
+    delimited = require("format.transforms.objects_to_delimited"),
+    json      = require("format.transforms.objects_to_json"),
+    lines     = require("format.transforms.objects_to_lines"),
+}
 
 ----------------------------------------------------------------
 -- Validation
@@ -22,28 +42,11 @@ Registry.validate = {
 }
 
 ----------------------------------------------------------------
--- Transforms (codec-shape projections)
-----------------------------------------------------------------
-
-Registry.transforms = {
-    table_to_object_array = require("format.transforms.table_to_object_array"),
-    object_array_to_table = require("format.transforms.object_array_to_table"),
-    json_to_object_array  = require("format.transforms.json_to_object_array"),
-    object_array_to_lines = require("format.transforms.object_array_to_lines"),
-}
-
-----------------------------------------------------------------
--- Normalization utilities
+-- Normalization
 ----------------------------------------------------------------
 
 Registry.normalize = {
     clean = require("format.normalize.clean"),
 }
-
-----------------------------------------------------------------
--- Optional helpers
-----------------------------------------------------------------
-
--- Registry.unwrap = require("format.unwrap")
 
 return Registry
