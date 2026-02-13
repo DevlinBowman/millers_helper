@@ -40,10 +40,7 @@ Controller.CONTRACT = {
     write = {
         in_ = {
             path    = true,
-            payload = {
-                codec = true,
-                data  = true,
-            },
+            payload = true
         },
 
         out = {

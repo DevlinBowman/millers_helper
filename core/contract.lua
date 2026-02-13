@@ -39,6 +39,33 @@ local function spec_is_optional(spec)
     return spec:sub(-1) == "?"
 end
 
+---@param t any
+---@return string
+local function keys_of(t)
+    if type(t) ~= "table" then
+        return tostring(t)
+    end
+    local out = {}
+    for k in pairs(t) do
+        out[#out + 1] = tostring(k)
+    end
+    table.sort(out)
+    return table.concat(out, ", ")
+end
+
+---@param path string
+---@param expected any
+---@param actual any
+---@return string
+local function format_missing(path, expected, actual)
+    return string.format(
+        "contract mismatch at '%s'\n  expected keys: {%s}\n  keys received: {%s}",
+        path,
+        keys_of(expected),
+        keys_of(actual)
+    )
+end
+
 ----------------------------------------------------------------
 -- Recursive validator (presence-only)
 ----------------------------------------------------------------
@@ -56,26 +83,23 @@ local function validate_shape(value, shape, path)
         return true
     end
 
-    -- nil/false shape means "ignore"
+    -- nil/false shape means ignore
     if shape == nil or shape == false then
         return true
     end
 
-    -- legacy string spec => presence-only (optional via "?")
+    -- legacy string spec => presence-only
     if type(shape) == "string" then
-        if value == nil then
-            if spec_is_optional(shape) then
-                return true
-            end
+        if value == nil and not spec_is_optional(shape) then
             return false, string.format(
-                "contract mismatch at '%s' (missing key)",
+                "contract mismatch at '%s' (missing value)",
                 path
             )
         end
         return true
     end
 
-    -- nested table spec
+    -- invalid shape definition
     if type(shape) ~= "table" then
         return false, string.format(
             "invalid contract shape at '%s' (expected table/true/string, got %s)",
@@ -84,53 +108,44 @@ local function validate_shape(value, shape, path)
         )
     end
 
+    -- expected table but got something else
     if type(value) ~= "table" then
         return false, string.format(
-            "contract mismatch at '%s' (expected table)",
-            path
+            "contract mismatch at '%s' (expected table, got %s)",
+            path,
+            type(value)
         )
     end
 
     for raw_key, requirement in pairs(shape) do
         local key, key_optional = parse_key(raw_key)
         local child = value[key]
+        local child_path = path .. "." .. key
 
+        -- required presence
         if requirement == true then
             if child == nil and not key_optional then
-                return false, string.format(
-                    "contract mismatch at '%s.%s' (missing key)",
-                    path,
-                    key
-                )
+                return false, format_missing(child_path, shape, value)
             end
 
+        -- nested table
         elseif type(requirement) == "table" then
             if child == nil then
                 if not key_optional then
-                    return false, string.format(
-                        "contract mismatch at '%s.%s' (missing key)",
-                        path,
-                        key
-                    )
+                    return false, format_missing(child_path, requirement, value)
                 end
             else
-                local ok, err = validate_shape(child, requirement, path .. "." .. key)
+                local ok, err = validate_shape(child, requirement, child_path)
                 if not ok then
                     return false, err
                 end
             end
 
+        -- string leaf (presence-only)
         elseif type(requirement) == "string" then
-            -- legacy leaf string => presence-only (optional handled by key? or "type?")
             if child == nil and not (key_optional or spec_is_optional(requirement)) then
-                return false, string.format(
-                    "contract mismatch at '%s.%s' (missing key)",
-                    path,
-                    key
-                )
+                return false, format_missing(child_path, shape, value)
             end
-        else
-            -- anything else => ignore
         end
     end
 
