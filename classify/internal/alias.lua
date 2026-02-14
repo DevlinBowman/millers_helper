@@ -11,8 +11,8 @@
 --
 -- Collisions tracked across both exact + normalized indexes.
 
-local Spec      = require("classify.spec")
-local Normalize = require("classify.normalize")
+local Spec      = require("classify.internal.spec")
+local Normalize = require("classify.internal.normalize")
 
 local Alias = {}
 

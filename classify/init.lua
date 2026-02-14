@@ -1,14 +1,9 @@
 -- classify/init.lua
---
--- Public API for the standalone classifier.
 
-local Run = require("classify.run")
+local Controller = require("classify.controller")
+local Registry   = require("classify.registry")
 
-local Classify = {}
-
---- Classify one decoded object (row).
-function Classify.row(row)
-    return Run.row(row)
-end
-
-return Classify
+return {
+    controller = Controller,
+    registry   = Registry,
+}
