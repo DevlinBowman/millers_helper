@@ -4,7 +4,7 @@ local Registry = {}
 
 Registry.fs    = require("io.helpers.fs")
 Registry.read  = require("io.read.read")
-Registry.write = require("io.write.write")
+Registry.write = require("io.pipelines.write")
 
 Registry.validate = {
     input = require("io.validate.input"),

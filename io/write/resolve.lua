@@ -2,8 +2,7 @@
 --
 -- Resolves write codec from output path extension only.
 
-local Registry = require('io.registry')
-local FS = Registry.fs
+local FS = require('io.helpers.fs')
 
 local Resolve = {}
 
