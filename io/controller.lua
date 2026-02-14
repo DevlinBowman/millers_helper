@@ -27,20 +27,14 @@ Controller.CONTRACT = {
         out = {
             codec = true,
             data  = true,
-            meta  = {
-                source_path = true,
-                input_codec = true,
-                size_bytes  = true,
-                hash        = true,
-                read_time   = true,
-            },
+            meta  = true,   -- allow extension / nesting downstream
         },
     },
 
     write = {
         in_ = {
             path    = true,
-            payload = true
+            payload = true,
         },
 
         out = {
@@ -57,12 +51,18 @@ Controller.CONTRACT = {
 -- Internal normalization
 ----------------------------------------------------------------
 
+----------------------------------------------------------------
+-- Internal normalization
+----------------------------------------------------------------
+
 local function normalize_read_envelope(path, result)
     assert(type(result) == "table", "invalid read result")
     assert(result.codec ~= nil, "read result missing codec")
     assert(result.data ~= nil, "read result missing data")
 
-    result.meta = {
+    result.meta = result.meta or {}
+
+    result.meta.io = {
         source_path = path,
         input_codec = result.codec,
         size_bytes  = FS.file_size(path),
