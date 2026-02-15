@@ -3,12 +3,14 @@
 -- Canonical hub mapping surface.
 --
 -- Public API:
---   decode(codec, data)   → { codec="objects", data }
+--   decode(codec, data)    → { codec="objects", data }
 --   encode(codec, objects) → { codec, data }
 --
 -- Boundary owns contracts + trace only.
 
-local Registry = require("format.registry")
+local Registry        = require("format.registry")
+local DecodePipeline  = require("format.pipelines.decode")
+local EncodePipeline  = require("format.pipelines.encode")
 
 local Trace    = require("tools.trace")
 local Contract = require("core.contract")
@@ -28,7 +30,7 @@ Controller.CONTRACT = {
         },
         out = {
             codec = true,
-            data = true,
+            data  = true,
         },
     },
 
@@ -58,50 +60,11 @@ function Controller.decode(codec, data)
         Controller.CONTRACT.decode.in_
     )
 
-    ----------------------------------------------------------------
-    -- Decoder lookup
-    ----------------------------------------------------------------
-
-    local decoder = Registry.decode[codec]
-    if not decoder then
+    local out, err = DecodePipeline.run(codec, data)
+    if not out then
         Trace.contract_leave()
-        return nil, "no decoder registered for codec '" .. codec .. "'"
+        return nil, err
     end
-
-    ----------------------------------------------------------------
-    -- Decode raw codec data → canonical objects
-    ----------------------------------------------------------------
-
-    local objects, decode_err = decoder.run(data)
-    if not objects then
-        Trace.contract_leave()
-        return nil, decode_err
-    end
-
-    ----------------------------------------------------------------
-    -- Canonical shape guard
-    ----------------------------------------------------------------
-
-    local Shape = Registry.validate.shape
-    if not Shape.objects(objects) then
-        Trace.contract_leave()
-        return nil, "decoder produced invalid canonical object shape"
-    end
-
-    ----------------------------------------------------------------
-    -- Canonical hygiene (MANDATORY, post-creation)
-    ----------------------------------------------------------------
-
-    Registry.normalize.clean.apply("objects", objects)
-
-    ----------------------------------------------------------------
-    -- Output envelope (codec only — no 'kind')
-    ----------------------------------------------------------------
-
-    local out = {
-        codec = "objects",
-        data  = objects,
-    }
 
     Trace.contract_out(
         Controller.CONTRACT.decode.out,
@@ -112,7 +75,6 @@ function Controller.decode(codec, data)
     Contract.assert(out, Controller.CONTRACT.decode.out)
 
     Trace.contract_leave()
-
     return out
 end
 
@@ -130,54 +92,21 @@ function Controller.encode(codec, objects)
         Controller.CONTRACT.encode.in_
     )
 
-    ----------------------------------------------------------------
-    -- Canonical shape guard
-    ----------------------------------------------------------------
-
-    local Shape = Registry.validate.shape
-    if not Shape.objects(objects) then
+    local out, err = EncodePipeline.run(codec, objects)
+    if not out then
         Trace.contract_leave()
-        return nil, "invalid canonical objects shape"
+        return nil, err
     end
 
-    ----------------------------------------------------------------
-    -- Lookup encoder
-    ----------------------------------------------------------------
+    Trace.contract_out(
+        Controller.CONTRACT.encode.out,
+        codec,
+        "caller"
+    )
 
-    local encoder = Registry.encode[codec]
-
-    local data
-    local err
-
-    if encoder then
-        data, err = encoder.run(objects)
-        if not data then
-            Trace.contract_leave()
-            return nil, err
-        end
-
-    elseif codec == "lua" then
-        -- identity allowed
-        data = objects
-
-    else
-        Trace.contract_leave()
-        return nil, "no encoder registered for codec '" .. codec .. "'"
-    end
-
-    ----------------------------------------------------------------
-    -- Output envelope
-    ----------------------------------------------------------------
-
-    local out = {
-        codec = codec,
-        data  = data,
-    }
-
-    Trace.contract_out(Controller.CONTRACT.encode.out, codec, "caller")
     Contract.assert(out, Controller.CONTRACT.encode.out)
-    Trace.contract_leave()
 
+    Trace.contract_leave()
     return out
 end
 
