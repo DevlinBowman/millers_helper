@@ -1,4 +1,4 @@
--- parsers/board_data/chunk/chunk/chunk_builder.lua
+-- parsers/board_data/chunk/chunk_builder.lua
 local TokenMap = require("parsers.board_data.lex.token_mappings")
 
 local ChunkBuilder = {}

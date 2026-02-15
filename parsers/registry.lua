@@ -11,7 +11,7 @@ Registry.raw_text = {
     preprocess = require("parsers.raw_text.preprocess"),
 }
 
-Registry.text_pipeline = require("parsers.pipeline")
+Registry.text_pipeline = require("parsers.pipelines.text")
 
 Registry.board_data = require("parsers.board_data").registry
 

@@ -1,4 +1,4 @@
--- parsers/pipeline.lua
+-- parsers/pipelines/text.lua
 --
 -- Public contract wrapper for the text pipeline.
 --
