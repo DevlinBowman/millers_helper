@@ -28,11 +28,7 @@ Controller.CONTRACT = {
 ---@param lines string[]
 ---@return table result
 function Controller.run(lines)
-    print("USING RAW_TEXT CONTROLLER")
     assert(type(lines) == "table", "raw_text.controller.run(): lines must be table")
-    local I = require('inspector')
-    print('*************')
-    I.print(lines)
     return Registry.internal.preprocess.run(lines)
 end
 
