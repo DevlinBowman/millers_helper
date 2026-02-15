@@ -2,7 +2,7 @@
 --
 -- Label generation (authoritative encoding).
 
-local Helpers = require("core.model.board.label.helpers")
+local Helpers = require("core.model.board.internal.label.helpers")
 
 local Generate = {}
 

@@ -1,7 +1,7 @@
 -- core/model/board/label/init.lua
 
-local Generate = require("core.model.board.label.generate")
-local Hydrate  = require("core.model.board.label.hydrate")
+local Generate = require("core.model.board.internal.label.generate")
+local Hydrate  = require("core.model.board.internal.label.hydrate")
 
 local Label = {}
 

@@ -1,8 +1,8 @@
 -- core/model/board/derive.lua
 
-local Normalize = require("core.model.board.normalize")
-local Convert   = require("core.model.board.attr_conversion")
-local Util      = require("core.model.board.utils.helpers")
+local Normalize = require("core.model.board.internal.normalize")
+local Convert   = require("core.model.board.internal.attr_conversion")
+local Util      = require("core.model.board.internal.utils.helpers")
 
 
 local Derive = {}

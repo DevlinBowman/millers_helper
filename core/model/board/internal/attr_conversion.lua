@@ -1,6 +1,6 @@
 -- core/utils/board_attr_conversion.lua
 
-local util = require("core.model.board.utils.helpers")
+local util = require("core.model.board.internal.utils.helpers")
 
 local Convert = {}
 

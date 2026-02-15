@@ -1,6 +1,6 @@
 -- core/model/board/identity.lua
 
-local Label = require("core.model.board.label.init")
+local Label = require("core.model.board.internal.label.init")
 
 local Identity = {}
 

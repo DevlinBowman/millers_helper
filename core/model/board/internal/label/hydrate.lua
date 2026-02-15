@@ -2,7 +2,7 @@
 --
 -- Label hydration (decode label into spec).
 
-local Helpers = require("core.model.board.label.helpers")
+local Helpers = require("core.model.board.internal.label.helpers")
 
 local Hydrate = {}
 
