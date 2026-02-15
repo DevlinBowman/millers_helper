@@ -1,12 +1,6 @@
 -- parsers/pipelines/text.lua
 --
 -- Public contract wrapper for the text pipeline.
---
--- PURPOSE:
---   • Run structural extraction (raw_text)
---   • Run semantic parsing (text_engine)
---   • Gate output into canonical ingestion shape
---   • Classify structural context per record
 
 local RawText    = require("parsers.raw_text").controller
 local TextEngine = require("parsers.pipelines.text_engine").controller
@@ -25,13 +19,13 @@ local function build_diagnostic(line)
 
     local resolved = line._resolved or {}
 
-    if next(resolved) == nil then
+    -- Only mark unparsed if semantic head existed
+    if next(resolved) == nil and (line.head and line.head ~= "") then
         diag.ok = false
         diag.signals[#diag.signals + 1] = {
             kind   = "unparsed_line",
             detail = "no usable structure recognized",
         }
-        return diag
     end
 
     local leftovers = line._unused_groups or {}
@@ -61,19 +55,21 @@ local function build_ingestion_record(line)
     local out = {}
     local r = line._resolved or {}
 
+    -- board fields
     if r.h   ~= nil then out.base_h = r.h end
     if r.w   ~= nil then out.base_w = r.w end
     if r.l   ~= nil then out.l      = r.l end
     if r.ct  ~= nil then out.ct     = r.ct end
     if r.tag ~= nil then out.tag    = r.tag end
 
+    -- propagate picked claims
     for _, claim in ipairs(line._picked or {}) do
         if claim.field and claim.value ~= nil and out[claim.field] == nil then
             out[claim.field] = claim.value
         end
     end
 
-    -- preserve structural tail assignments from raw_text
+    -- preserve structural tail assignments
     for k, v in pairs(line) do
         if type(k) == "string"
             and not k:match("^_")
@@ -84,6 +80,11 @@ local function build_ingestion_record(line)
         end
     end
 
+    -- preserve origin info
+    out.raw   = line.raw
+    out.head  = line.head
+    out.index = line.index
+
     return out
 end
 
@@ -91,37 +92,67 @@ end
 -- Structural Classification
 ----------------------------------------------------------------
 
+local BOARD_FIELDS = {
+    base_h = true,
+    base_w = true,
+    l      = true,
+    ct     = true,
+    tag    = true,
+    h      = true,
+    w      = true,
+}
+
+local SYSTEM_FIELDS = {
+    raw   = true,
+    head  = true,
+    index = true,
+    kind  = true,
+}
+
 local function classify_record(record)
-    local has_board =
+
+    local has_board_signal =
         record.base_h ~= nil
         or record.base_w ~= nil
         or record.l ~= nil
-        or record.ct ~= nil
-        or record.tag ~= nil
+
+    local has_required_dims =
+        record.base_h ~= nil
+        and record.base_w ~= nil
+        and record.l ~= nil
 
     local has_context = false
 
     for k, _ in pairs(record) do
-        if k ~= "base_h"
-            and k ~= "base_w"
-            and k ~= "l"
-            and k ~= "ct"
-            and k ~= "tag"
+        if not BOARD_FIELDS[k]
+           and not SYSTEM_FIELDS[k]
         then
             has_context = true
             break
         end
     end
 
-    if has_board and not has_context then
-        return "board_only"
-    elseif not has_board and has_context then
-        return "context_only"
-    elseif has_board and has_context then
-        return "mixed"
-    else
+    if not has_board_signal and not has_context then
+        return "empty"
+    end
+
+    if not has_board_signal and has_context then
         return "context_only"
     end
+
+    if has_board_signal and not has_required_dims then
+        return "dead_board"
+    end
+
+    if has_required_dims and not has_context then
+        return "board_only"
+    end
+
+    if has_required_dims and has_context then
+        return "mixed"
+    end
+
+    return "context_only"
 end
 
 ----------------------------------------------------------------
@@ -135,12 +166,12 @@ function TextPipeline.run(lines, opts)
     opts = opts or {}
 
     ----------------------------------------------------------------
-    -- 1. Structural extraction (raw_text)
+    -- 1. Structural extraction
     ----------------------------------------------------------------
     local structural_records = RawText.run(lines)
 
     ----------------------------------------------------------------
-    -- 2. Semantic parsing (text_engine)
+    -- 2. Semantic parsing
     ----------------------------------------------------------------
     local pipeline_out = TextEngine.run(structural_records, opts)
 
@@ -160,8 +191,21 @@ function TextPipeline.run(lines, opts)
         local record  = build_ingestion_record(line)
         local context = classify_record(record)
 
-        contexts[i]   = context
-        data[i]       = record
+        contexts[i] = context
+
+        -- Only dead boards become unknown
+        if context == "dead_board" then
+            data[i] = {
+                kind  = "unknown",
+                raw   = record.raw,
+                head  = record.head,
+                index = record.index,
+            }
+        else
+            record.kind = context
+            data[i] = record
+        end
+
         diagnostic[i] = build_diagnostic(line)
     end
 

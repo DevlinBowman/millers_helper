@@ -46,29 +46,29 @@ end
 ---@param opts table|nil
 ---@return table result
 function Pipeline.run(lines, opts)
-    opts = opts or {}
+    opts                = opts or {}
 
-    local Preprocess  = Registry.internal.preprocess
-    local RepairGate  = Registry.internal.repair_gate
-    local StableSpans = Registry.internal.stable_spans
-    local Diagnostics = Registry.internal.diagnostics
+    local Preprocess    = Registry.internal.preprocess
+    local RepairGate    = Registry.internal.repair_gate
+    local StableSpans   = Registry.internal.stable_spans
+    local Diagnostics   = Registry.internal.diagnostics
 
     local Tokenize      = BoardData.registry.lex.tokenize
     local ChunkBuilder  = BoardData.registry.chunk.build
     local ChunkCondense = BoardData.registry.chunk.condense
 
-    local records = Preprocess.run(lines)
+    local records       = Preprocess.run(lines)
 
     for _, rec in ipairs(records) do
         -- tokenize
-        rec._tokens = Tokenize.run(rec.head or "")
-        rec._token_lex, rec._token_kinds = Tokenize.format_tokens(rec._tokens)
+        rec._tokens                             = Tokenize.run(rec.head or "")
+        rec._token_lex, rec._token_kinds        = Tokenize.format_tokens(rec._tokens)
 
         -- chunk
-        rec._chunks     = ChunkBuilder.build(rec._tokens)
-        rec._chunk_view = ChunkBuilder.format(rec._chunks)
-        rec._condensed  = false
-        rec._stable_spans = nil
+        rec._chunks                             = ChunkBuilder.build(rec._tokens)
+        rec._chunk_view                         = ChunkBuilder.format(rec._chunks)
+        rec._condensed                          = false
+        rec._stable_spans                       = nil
 
         -- pass 1
         rec._claims, rec._resolved, rec._picked =
@@ -76,8 +76,8 @@ function Pipeline.run(lines, opts)
 
         StableSpans.collect(rec)
 
-        -- conditional repair (chunk condensation)
-        if opts.condense == true and RepairGate.needs_repair(rec) then
+        -- repair (chunk condensation)
+        if RepairGate.needs_repair(rec) then
             local condensed = ChunkCondense.run(
                 rec._tokens,
                 rec._chunks,
@@ -85,9 +85,9 @@ function Pipeline.run(lines, opts)
             )
 
             if condensed ~= rec._chunks then
-                rec._chunks     = condensed
-                rec._chunk_view = ChunkBuilder.format(condensed)
-                rec._condensed  = true
+                rec._chunks                             = condensed
+                rec._chunk_view                         = ChunkBuilder.format(condensed)
+                rec._condensed                          = true
 
                 rec._claims, rec._resolved, rec._picked =
                     run_pass(rec, condensed)

@@ -1,4 +1,4 @@
--- parsers/raw_text/preprocess.lua
+-- parsers/raw_text/internal/preprocess.lua
 --
 -- Raw text preprocessor
 -- PURPOSE:
@@ -81,6 +81,7 @@ function Preprocess.run(lines)
         local record = {
             __raw     = raw,
             __line_no = i,
+            raw       = raw, -- ← ADD THIS
         }
 
         ----------------------------------------------------------------
