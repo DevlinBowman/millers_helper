@@ -32,17 +32,17 @@ Controller.CONTRACT = {
 ----------------------------------------------------------------
 
 function Controller.row(row)
-    Trace.contract_enter("classify.controller.row")
-    Trace.contract_in(Controller.CONTRACT.row.in_)
+    -- Trace.contract_enter("classify.controller.row")
+    -- Trace.contract_in(Controller.CONTRACT.row.in_)
 
     Contract.assert({ row = row }, Controller.CONTRACT.row.in_)
 
     local result = RowPipeline.run(row)
 
-    Trace.contract_out(Controller.CONTRACT.row.out, "classify.pipeline.row", "caller")
+    -- Trace.contract_out(Controller.CONTRACT.row.out, "classify.pipeline.row", "caller")
     Contract.assert(result, Controller.CONTRACT.row.out)
 
-    Trace.contract_leave()
+    -- Trace.contract_leave()
 
     return result
 end
