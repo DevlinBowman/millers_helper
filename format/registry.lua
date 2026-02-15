@@ -37,8 +37,11 @@ Registry.encode = {
 -- Validation
 ----------------------------------------------------------------
 
+-- format/registry.lua
+
 Registry.validate = {
-    shape = require("format.validate.shape"),
+    shape      = require("format.validate.shape"),
+    parser_gate = require("format.validate.parser_gate"),
 }
 
 ----------------------------------------------------------------

@@ -1,16 +1,22 @@
 -- pipelines/context_bundle.lua
 --
 -- Multi-source bundle assembler.
+--
 -- Responsibility:
 --   • Load order file via pipelines.ingest.read
 --   • Load boards file via pipelines.ingest.read
---   • Return built objects (order + boards) + provenance meta
+--   • Extract aggregated order + boards
+--   • Merge into single structural bundle
 --
 -- NOTE:
 --   pipelines.ingest.read returns:
---     { order = <Order>, boards = <Board[]>, meta = { io = ... } }
+--     {
+--       codec = "orders",
+--       data  = { { order=table, boards=table[] }[] },
+--       meta  = ...
+--     }
 
-local Ingest   = require("pipelines.ingest")
+local Ingest   = require("pipelines.ingestion.ingest")
 local Trace    = require("tools.trace")
 local Contract = require("core.contract")
 
@@ -28,23 +34,61 @@ Bundle.CONTRACT = {
             opts        = false,
         },
         out = {
-            order  = true, -- built Order
-            boards = true, -- built Board[]
-            meta   = true, -- provenance only
+            order  = true, -- table
+            boards = true, -- table[]
+            meta   = true,
         },
     },
 }
 
 ----------------------------------------------------------------
+-- Helpers
+----------------------------------------------------------------
+
+local function extract_single_order(result)
+    assert(result.codec == "orders", "expected ingest codec 'orders'")
+
+    if type(result.data) ~= "table" or #result.data == 0 then
+        return nil, "no orders found"
+    end
+
+    if #result.data > 1 then
+        return nil, "order file contains multiple orders; expected exactly one"
+    end
+
+    return result.data[1].order
+end
+
+local function extract_all_boards(result)
+    assert(result.codec == "orders", "expected ingest codec 'orders'")
+
+    if type(result.data) ~= "table" or #result.data == 0 then
+        return nil, "no data found in boards file"
+    end
+
+    local boards = {}
+
+    for _, item in ipairs(result.data) do
+        if type(item.boards) == "table" then
+            for _, board in ipairs(item.boards) do
+                boards[#boards + 1] = board
+            end
+        end
+    end
+
+    if #boards == 0 then
+        return nil, "no boards found in boards file"
+    end
+
+    return boards
+end
+
+----------------------------------------------------------------
 -- Public API
 ----------------------------------------------------------------
 
----@param order_path string
----@param boards_path string
----@param opts table|nil
----@return table|nil result
----@return string|nil err
 function Bundle.load(order_path, boards_path, opts)
+
     Trace.contract_enter("pipelines.context_bundle.load")
     Trace.contract_in(Bundle.CONTRACT.load.in_)
 
@@ -58,7 +102,7 @@ function Bundle.load(order_path, boards_path, opts)
     opts = opts or {}
 
     ------------------------------------------------------------
-    -- Load Order (built objects)
+    -- Load Order File
     ------------------------------------------------------------
     local order_result, order_err = Ingest.read(order_path, opts)
     if not order_result then
@@ -66,8 +110,14 @@ function Bundle.load(order_path, boards_path, opts)
         return nil, order_err
     end
 
+    local order, order_extract_err = extract_single_order(order_result)
+    if not order then
+        Trace.contract_leave()
+        return nil, order_extract_err
+    end
+
     ------------------------------------------------------------
-    -- Load Boards (built objects)
+    -- Load Boards File
     ------------------------------------------------------------
     local boards_result, boards_err = Ingest.read(boards_path, opts)
     if not boards_result then
@@ -75,20 +125,18 @@ function Bundle.load(order_path, boards_path, opts)
         return nil, boards_err
     end
 
-    ------------------------------------------------------------
-    -- Validate expectations
-    ------------------------------------------------------------
-    if type(boards_result.boards) ~= "table" or #boards_result.boards == 0 then
+    local boards, boards_extract_err = extract_all_boards(boards_result)
+    if not boards then
         Trace.contract_leave()
-        return nil, "no boards found in boards file"
+        return nil, boards_extract_err
     end
 
     ------------------------------------------------------------
-    -- Merge (objects only)
+    -- Output Bundle
     ------------------------------------------------------------
     local out = {
-        order  = order_result.order,
-        boards = boards_result.boards,
+        order  = order,
+        boards = boards,
         meta   = {
             order_source  = order_result.meta,
             boards_source = boards_result.meta,

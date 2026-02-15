@@ -1,30 +1,40 @@
-local I = require('inspector')
+local I       = require("inspector")
+local Ingest  = require("pipelines.ingestion.ingest")
 
-local IO = require('io.controller')
-local Format = require('format.controller')
+local boards_path = "/Users/ven/Desktop/2026-lumber-app-v3/data/test_inputs/input.txt"
+local order_path  = "/Users/ven/Desktop/2026-lumber-app-v3/data/test_inputs/no_boards.txt"
 
-local Trace = require('tools.trace')
-Trace.set(true)
+----------------------------------------------------------------
+-- Utility
+----------------------------------------------------------------
 
--- -- 1. Read raw codec envelope
--- local raw = IO.read('/Users/ven/Desktop/2026-lumber-app-v3/data/test_inputs/test_lumber.json')
--- print('raw')
--- -- I.print(raw, { shape_only = true })
---
--- -- 2. Decode to canonical objects
--- --
--- local decoded = Format.decode(raw.codec, raw.data)
--- I.print(decoded, { shape_only = true })
---
--- -- 3. Encode objects to target codec
--- local encoded = Format.encode("lua", decoded.data)
--- I.print(encoded, { shape_only = true })
---
--- -- 4. Write codec envelope
--- local out = IO.write('data/out/json_to_lua.lua', encoded)
--- I.print(out)
---
-local Ingest = require('pipelines.ingest')
-local test_text = 'notes = szsdf'
-local txt_rd = Ingest.read('/Users/ven/Desktop/2026-lumber-app-v3/data/test_inputs/no_boards.txt')
-I.print(txt_rd)
+local function run_parser_test(path)
+
+    print("\n=================================================")
+    print("PARSER TEST:", path)
+    print("=================================================\n")
+
+    ------------------------------------------------------------
+    -- INGEST (STOP AT PARSER STAGE)
+    ------------------------------------------------------------
+
+    local result, err = Ingest.read(path, {
+        -- stop_at = "parser"
+    })
+
+    if not result then
+        print("\nPARSER GATE ERROR:")
+        I.print(err)
+        return
+    end
+
+    -- print("\n-- PARSER OUTPUT (STOPPED AT CLASSIFY) --")
+    I.print(result, { shape_only = true })
+end
+
+----------------------------------------------------------------
+-- Run Tests
+----------------------------------------------------------------
+
+run_parser_test(boards_path)
+run_parser_test(order_path)

@@ -16,11 +16,36 @@ function M.run(table_data)
     local objects = {}
 
     for _, row in ipairs(rows) do
-        local obj = {}
+
+        -- Defensive header-leak guard:
+        -- If the row exactly matches header, skip it.
+        local is_header_row = true
+
         for i, key in ipairs(header) do
-            obj[key] = row[i]
+            if tostring(row[i]) ~= tostring(key) then
+                is_header_row = false
+                break
+            end
         end
-        objects[#objects + 1] = obj
+
+        if not is_header_row then
+            local obj = {}
+            local empty = true
+
+            for i, key in ipairs(header) do
+                local value = row[i]
+
+                if value ~= nil and tostring(value) ~= "" then
+                    obj[key] = value
+                    empty = false
+                end
+            end
+
+            -- Skip fully empty rows
+            if not empty then
+                objects[#objects + 1] = obj
+            end
+        end
     end
 
     return objects

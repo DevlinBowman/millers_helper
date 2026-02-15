@@ -57,6 +57,9 @@ Spec.board_fields = {
     grade = { aliases = { "grade", "Grade", "GR", "grd" }, },
     moisture = { aliases = { "moisture", "Moisture", "MC" }, },
     surface = { aliases = { "surface", "Surface", "Finish" }, },
+
+    purpose = { aliases = { "purpose", "Purpose", "useage" }, },
+    description = { aliases = { "notes", "Notes", "note", 'Description' }, },
 }
 
 ----------------------------------------------------------------
@@ -71,20 +74,21 @@ Spec.order_fields = {
 
     date = { aliases = { "date", "Date", "Order Date" }, },
     job_number = { aliases = { "job_number", "Job Number", "job", "Job", "job number" }, },
-    order_number = { aliases = { "order_number", "Order Number", "OrderNo" }, },
+    order_number = { aliases = { "order_number", "Order Number", "OrderNo", "Order No" }, },
     order_id = { aliases = { "order_id", "OrderID" }, },
     order_status = { aliases = { "order_status", "Order Status", "Status" }, },
     customer_name = { aliases = { "customer_name", "Customer", "customer" }, },
     customer_id = { aliases = { "customer_id", "CustomerID" }, },
+    client = { aliases = { "Client", "client" }, },
     beneficiary = { aliases = { "beneficiary", "Payee", "payee" }, },
+    claimant = { aliases = { 'claimant', 'Claimant' } },
+    use = { aliases = { 'use', 'Use' } },
     distribution_type = { aliases = { "distribution_type", "Distribution", "Delivery" }, },
     invoice_number = { aliases = { "invoice_number", "Invoice", "Invoice Number" }, },
-    purpose = { aliases = { "purpose", "Purpose", "useage" }, },
     order_notes = { aliases = { "order_notes", "Order Notes" }, },
     stumpage_cost = { aliases = { "stumpage_cost", "cost", "stumpage" }, },
     stumpage_origin = { aliases = { "stumpage_origin", "owner", "log owner", "purchased from" }, },
     value = { aliases = { "value", "Value", "Total Value" }, },
-    notes = { aliases = { "notes", "Notes", "note" }, },
 }
 
 return Spec

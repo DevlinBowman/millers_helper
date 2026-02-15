@@ -5,6 +5,15 @@ Schema.ROLES = {
     DERIVED       = "derived",
 }
 
+-- Defines authoritative identity resolution order.
+-- Ingest will use the first non-nil field found here.
+Schema.identity_priority = {
+    "order_id",
+    "order_number",
+    "job_number",
+    "invoice_number",
+}
+
 local function coerce_currency_number(v)
     if v == nil then return nil end
     if type(v) == "number" then return v end
@@ -31,12 +40,14 @@ Schema.fields = {
     distribution_type = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },
     invoice_number    = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },
 
-    purpose           = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },
+    -- purpose           = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },
     order_notes       = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },
-    notes             = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },
+    -- notes             = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },
 
     stumpage_cost     = { role = Schema.ROLES.AUTHORITATIVE, coerce = coerce_currency_number },
     stumpage_origin   = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },
+
+    value             = { role = Schema.ROLES.DERIVED,coerce = coerce_currency_number }
 }
 
 return Schema
