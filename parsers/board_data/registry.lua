@@ -1,65 +1,65 @@
 -- parsers/board_data/registry.lua
 --
--- Authoritative registry for board_data domain.
--- PURPOSE:
---   • Expose full internal public surface
---   • Provide stable import contract for other domains
+-- Capability surface only.
+-- No orchestration.
+-- No contracts.
+-- No trace.
+-- No logic.
+--
+-- Answers:
+--   What does this module provide?
 
 local Registry = {}
 
 ----------------------------------------------------------------
--- Lex layer
+-- Lex
 ----------------------------------------------------------------
-
 Registry.lex = {
-    tokenize  = require("parsers.board_data.lex.tokenize"),
-    lexer     = require("parsers.board_data.lex.lexer"),
-    classify  = require("parsers.board_data.lex.classify"),
-    labeler   = require("parsers.board_data.lex.labeler"),
-    reduce    = require("parsers.board_data.lex.reduce_fractional_number"),
-    mappings  = require("parsers.board_data.lex.token_mappings"),
+    tokenize = require("parsers.board_data.internal.lex.tokenize"),
+    lexer    = require("parsers.board_data.internal.lex.lexer"),
+    classify = require("parsers.board_data.internal.lex.classify"),
+    labeler  = require("parsers.board_data.internal.lex.labeler"),
+    reduce   = require("parsers.board_data.internal.lex.reduce_fractional_number"),
+    mappings = require("parsers.board_data.internal.lex.token_mappings"),
 }
 
 ----------------------------------------------------------------
--- Chunk layer
+-- Chunk
 ----------------------------------------------------------------
-
 Registry.chunk = {
-    build    = require("parsers.board_data.chunk.chunk_builder"),
-    condense = require("parsers.board_data.chunk.chunk_condense"),
-    ignore   = require("parsers.board_data.chunk.chunk_ignore"),
-    preds    = require("parsers.board_data.chunk.chunk_predicates"),
+    build    = require("parsers.board_data.internal.chunk.chunk_builder"),
+    condense = require("parsers.board_data.internal.chunk.chunk_condense"),
+    ignore   = require("parsers.board_data.internal.chunk.chunk_ignore"),
+    preds    = require("parsers.board_data.internal.chunk.chunk_predicates"),
 }
 
 ----------------------------------------------------------------
--- Pattern layer
+-- Pattern
 ----------------------------------------------------------------
-
 Registry.pattern = {
-    predicates = require("parsers.board_data.pattern.predicates"),
-    matcher    = require("parsers.board_data.pattern.pattern_match"),
+    predicates = require("parsers.board_data.internal.pattern.predicates"),
+    matcher    = require("parsers.board_data.internal.pattern.pattern_match"),
 }
 
 ----------------------------------------------------------------
--- Rules
+-- Rules (authoritative ordered list)
 ----------------------------------------------------------------
-
-Registry.rules = require("parsers.board_data.rules")
+Registry.rules =
+    require("parsers.board_data.internal.rules")
 
 ----------------------------------------------------------------
--- Attribution
+-- Attribution Engine
 ----------------------------------------------------------------
-
-Registry.attribution = require("parsers.board_data.attribute_attribution")
+Registry.attribution =
+    require("parsers.board_data.internal.attribute.attribution")
 
 ----------------------------------------------------------------
 -- Claims
 ----------------------------------------------------------------
-
 Registry.claims = {
-    resolver = require("parsers.board_data.claims.claim_resolver"),
-    format   = require("parsers.board_data.claims.format_claims"),
-    view     = require("parsers.board_data.claims.claim_view"),
+    resolver = require("parsers.board_data.internal.claims.claim_resolver"),
+    format   = require("parsers.board_data.internal.claims.format_claims"),
+    view     = require("parsers.board_data.internal.claims.claim_view"),
 }
 
 return Registry

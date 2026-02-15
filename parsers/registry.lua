@@ -8,7 +8,7 @@
 local Registry = {}
 
 Registry.raw_text = {
-    preprocess = require("parsers.raw_text.preprocess"),
+    preprocess = require("parsers.raw_text.internal.preprocess"),
 }
 
 Registry.text_pipeline = require("parsers.pipelines.text")

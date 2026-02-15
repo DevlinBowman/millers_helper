@@ -3,18 +3,13 @@
 -- Public contract wrapper for the text pipeline.
 --
 -- PURPOSE:
---   • Run the internal pipeline (inspection artifacts)
+--   • Run structural extraction (raw_text)
+--   • Run semantic parsing (text_engine)
 --   • Gate output into canonical ingestion shape
 --   • Classify structural context per record
---
--- CONTRACT:
---   return {
---     data       = object[],
---     meta       = table,      -- meta.io preserved, meta.parse appended
---     diagnostic = table[]?,
---   }
 
-local InternalPipeline = require("parsers.text_pipeline.pipeline")
+local RawText    = require("parsers.raw_text").controller
+local TextEngine = require("parsers.pipelines.text_engine").controller
 
 local TextPipeline = {}
 
@@ -66,21 +61,19 @@ local function build_ingestion_record(line)
     local out = {}
     local r = line._resolved or {}
 
-    if r.h ~= nil then out.base_h = r.h end
-    if r.w ~= nil then out.base_w = r.w end
-    if r.l ~= nil then out.l = r.l end
-    if r.ct ~= nil then out.ct = r.ct end
-    if r.tag ~= nil then out.tag = r.tag end
+    if r.h   ~= nil then out.base_h = r.h end
+    if r.w   ~= nil then out.base_w = r.w end
+    if r.l   ~= nil then out.l      = r.l end
+    if r.ct  ~= nil then out.ct     = r.ct end
+    if r.tag ~= nil then out.tag    = r.tag end
 
     for _, claim in ipairs(line._picked or {}) do
-        local field = claim.field
-        local value = claim.value
-
-        if field and value ~= nil and out[field] == nil then
-            out[field] = value
+        if claim.field and claim.value ~= nil and out[claim.field] == nil then
+            out[claim.field] = claim.value
         end
     end
 
+    -- preserve structural tail assignments from raw_text
     for k, v in pairs(line) do
         if type(k) == "string"
             and not k:match("^_")
@@ -141,54 +134,45 @@ end
 function TextPipeline.run(lines, opts)
     opts = opts or {}
 
-    local Capture = require("parsers.text_pipeline.capture")
+    ----------------------------------------------------------------
+    -- 1. Structural extraction (raw_text)
+    ----------------------------------------------------------------
+    local structural_records = RawText.run(lines)
 
-    local pipeline_out = InternalPipeline.run(lines, opts)
+    ----------------------------------------------------------------
+    -- 2. Semantic parsing (text_engine)
+    ----------------------------------------------------------------
+    local pipeline_out = TextEngine.run(structural_records, opts)
 
     assert(
         type(pipeline_out) == "table"
         and type(pipeline_out.data) == "table",
-        "text pipeline internal must return { data = object[] }"
+        "text_engine must return { data = object[] }"
     )
 
-    local line_records   = pipeline_out.data
+    local line_records = pipeline_out.data
 
-    local data           = {}
-    local diagnostic     = {}
-
-    local context_counts = {
-        board_only   = 0,
-        context_only = 0,
-        mixed        = 0,
-    }
-
-    local contexts       = {}
+    local data       = {}
+    local diagnostic = {}
+    local contexts   = {}
 
     for i, line in ipairs(line_records) do
-        local record            = build_ingestion_record(line)
-        local context           = classify_record(record)
+        local record  = build_ingestion_record(line)
+        local context = classify_record(record)
 
-        context_counts[context] = context_counts[context] + 1
-        contexts[i]             = context
-
-        data[i]                 = record
-        diagnostic[i]           = build_diagnostic(line)
-
-        if opts.capture then
-            Capture.record(opts.capture, i, line)
-        end
+        contexts[i]   = context
+        data[i]       = record
+        diagnostic[i] = build_diagnostic(line)
     end
 
     ----------------------------------------------------------------
-    -- META MERGE (preserve io provenance)
+    -- META MERGE
     ----------------------------------------------------------------
+    local meta = pipeline_out.meta or {}
 
-    local meta           = pipeline_out.meta or {}
-
-    meta.parser          = "text_pipeline"
-    meta.count           = #data
-    meta.contexts        = contexts
-    -- meta.context_summary = context_counts
+    meta.parser   = "text_pipeline"
+    meta.count    = #data
+    meta.contexts = contexts
 
     return {
         data       = data,

@@ -1,20 +1,9 @@
 -- parsers/board_data/pipelines/parse_line.lua
---
--- Pipeline: parse a single board line
---
--- Responsibilities:
---   • Compose lex → chunk → attribute → resolve
---   • No contracts
---   • No tracing
---   • No validation
 
 local Registry = require("parsers.board_data.registry")
 
 local ParseLinePipeline = {}
 
----@param raw string
----@param opts table|nil
----@return table result
 function ParseLinePipeline.run(raw, opts)
     opts = opts or {}
 
@@ -24,8 +13,12 @@ function ParseLinePipeline.run(raw, opts)
     -- Chunk
     local chunks = Registry.chunk.build.build(tokens)
 
-    if opts.condense == true then
-        chunks = Registry.chunk.condense.run(tokens, chunks, {})
+    if opts.condense then
+        chunks = Registry.chunk.condense.run(
+            tokens,
+            chunks,
+            {}
+        )
     end
 
     -- Attribute
