@@ -34,7 +34,7 @@ Schema.fields = {
         coerce = function(v)
             if v == nil or v == "" then return nil end
             local s = tostring(v):lower()
-            if s == "n" or s == "f" or "c" then return s end
+            if s == "n" or s == "f" or s == "c" then return s end
             return nil
         end
     },

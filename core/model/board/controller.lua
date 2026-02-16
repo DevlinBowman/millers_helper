@@ -1,7 +1,7 @@
 -- core/model/board/controller.lua
 
 local Contract = require("core.contract")
-local Trace    = require("tools.trace")
+local Trace    = require("tools.trace.trace")
 
 local BuildPipeline = require("core.model.board.pipelines.build")
 local Registry      = require("core.model.board.registry")
@@ -11,7 +11,11 @@ local Controller = {}
 Controller.CONTRACT = {
     build = {
         in_  = { spec = true },
-        out  = { board = true, unknown = true },
+        out  = {
+            ["board?"]   = true,
+            unknown      = true,
+            ["signals?"] = true,
+        },
     },
     label_generate = {
         in_  = { spec = true },
@@ -27,13 +31,25 @@ function Controller.build(spec)
     Trace.contract_enter("core.model.board.controller.build")
     Trace.contract_in(Controller.CONTRACT.build.in_)
 
-    assert(type(spec) == "table", "Board.controller.build(): spec table required")
-    Contract.assert({ spec = spec }, Controller.CONTRACT.build.in_)
+    local function run()
+        assert(type(spec) == "table", "Board.controller.build(): spec table required")
+        Contract.assert({ spec = spec }, Controller.CONTRACT.build.in_)
 
-    local result = BuildPipeline.run(spec)
+        local result = BuildPipeline.run(spec)
 
-    Contract.assert(result, Controller.CONTRACT.build.out)
-    Trace.contract_out(Controller.CONTRACT.build.out)
+        Contract.assert(result, Controller.CONTRACT.build.out)
+        Trace.contract_out(Controller.CONTRACT.build.out)
+
+        return result
+    end
+
+    local ok, result = pcall(run)
+
+    Trace.contract_leave()
+
+    if not ok then
+        error(result, 0)
+    end
 
     return result
 end

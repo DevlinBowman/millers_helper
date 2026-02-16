@@ -5,65 +5,89 @@ local Normalize = require("core.model.board.internal.normalize")
 
 local Coerce = {}
 
---- Coerce authoritative board inputs and return unknown inputs separately.
---- Unknowns are ONLY from the incoming ctx/spec (not derived fields computed later).
+--- Coerce authoritative board inputs.
+--- Returns a single flat result table:
+--- {
+---     value   = coerced_table,
+---     unknown = unknown_table,
+--- }
 ---
 --- @param ctx table
---- @return table coerced
---- @return table unknown
+--- @return table
 function Coerce.run(ctx)
     assert(type(ctx) == "table", "Board.coerce(): ctx table required")
 
-    local out     = {}
+    local coerced = {}
     local unknown = {}
 
-    for k, v in pairs(ctx) do
-        local def = Schema.fields[k]
+    ------------------------------------------------------------
+    -- Field coercion
+    ------------------------------------------------------------
 
-        if def and def.role == Schema.ROLES.AUTHORITATIVE then
-            if v ~= nil and def.coerce then
-                local coerced = def.coerce(v)
-                if coerced == nil and v ~= nil then
-                    error("Board.coerce(): failed coercion for field '" .. k .. "'")
+    for key, value in pairs(ctx) do
+        local field_def = Schema.fields[key]
+
+        if field_def and field_def.role == Schema.ROLES.AUTHORITATIVE then
+            if value ~= nil and field_def.coerce then
+                local coerced_value = field_def.coerce(value)
+
+                if coerced_value == nil and value ~= nil then
+                    error("Board.coerce(): failed coercion for field '" .. key .. "'")
                 end
-                out[k] = coerced
+
+                coerced[key] = coerced_value
             else
-                out[k] = v
+                coerced[key] = value
             end
         else
-            unknown[k] = v
+            unknown[key] = value
         end
     end
 
+    ------------------------------------------------------------
     -- Default count
-    out.ct = out.ct or 1
+    ------------------------------------------------------------
+
+    coerced.ct = coerced.ct or 1
 
     ------------------------------------------------------------
-    -- Intelligent tag assignment (n vs c vs f)
+    -- Intelligent tag assignment (n vs c)
     ------------------------------------------------------------
-    if out.tag == nil or out.tag == "" then
+
+    if coerced.tag == nil or coerced.tag == "" then
         local nominal_map = Normalize.NOMINAL_FACE_MAP
-        local base_h = out.base_h
-        local base_w = out.base_w
+        local base_h      = coerced.base_h
+        local base_w      = coerced.base_w
 
-        local h_nominal = nominal_map[base_h] ~= nil
-        local w_nominal = nominal_map[base_w] ~= nil
+        local is_nominal_h = nominal_map[base_h] ~= nil
+        local is_nominal_w = nominal_map[base_w] ~= nil
 
-        if h_nominal and w_nominal then
-            out.tag = "n"
+        if is_nominal_h and is_nominal_w then
+            coerced.tag = "n"
         else
-            out.tag = "c"
+            coerced.tag = "c"
         end
     end
 
     ------------------------------------------------------------
     -- Validate allowed tags
     ------------------------------------------------------------
-    if out.tag ~= "n" and out.tag ~= "f" and out.tag ~= "c" then
-        error("Board.coerce(): invalid tag '" .. tostring(out.tag) .. "'")
+
+    if coerced.tag ~= "n"
+        and coerced.tag ~= "f"
+        and coerced.tag ~= "c"
+    then
+        error("Board.coerce(): invalid tag '" .. tostring(coerced.tag) .. "'")
     end
 
-    return out, unknown
+    ------------------------------------------------------------
+    -- Flat single return
+    ------------------------------------------------------------
+
+    return {
+        value   = coerced,
+        unknown = unknown,
+    }
 end
 
 return Coerce
