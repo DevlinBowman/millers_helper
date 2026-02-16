@@ -6,7 +6,7 @@
 local Registry = {}
 
 Registry.alias     = require("classify.internal.alias")
-Registry.spec      = require("classify.internal.spec")
+Registry.spec      = require("classify.internal.schema")
 Registry.partition = require("classify.internal.partition")
 
 return Registry

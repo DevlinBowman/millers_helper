@@ -7,7 +7,7 @@
 --   • owner_of(canonical)
 --   • set_field(dst, canonical, value, diagnostics, raw_key)
 
-local Spec = require("classify.internal.spec")
+local Spec = require("classify.internal.schema")
 
 local Partition = {}
 

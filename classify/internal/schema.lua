@@ -72,23 +72,29 @@ Spec.order_fields = {
     --  CONTEXT
     -- ========================
 
+    -- Assigned Canonical Fields in the Order Builder (Expect to see in post build data)
     date = { aliases = { "date", "Date", "Order Date" }, },
-    job_number = { aliases = { "job_number", "Job Number", "job", "Job", "job number" }, },
-    order_number = { aliases = { "order_number", "Order Number", "OrderNo", "Order No" }, },
-    order_id = { aliases = { "order_id", "OrderID" }, },
-    order_status = { aliases = { "order_status", "Order Status", "Status" }, },
-    customer_name = { aliases = { "customer_name", "Customer", "customer" }, },
-    customer_id = { aliases = { "customer_id", "CustomerID" }, },
-    client = { aliases = { "Client", "client" }, },
-    beneficiary = { aliases = { "beneficiary", "Payee", "payee" }, },
+    client = { aliases = { "Client", "client", "customer_name", "customer name", "Customer", "customer"  }, },
     claimant = { aliases = { 'claimant', 'Claimant' } },
+    order_number = { aliases = { "order_number", "Order Number", "OrderNo", "Order No" }, },
     use = { aliases = { 'use', 'Use' } },
-    distribution_type = { aliases = { "distribution_type", "Distribution", "Delivery" }, },
-    invoice_number = { aliases = { "invoice_number", "Invoice", "Invoice Number" }, },
+    order_status = { aliases = { "order_status", "Order Status", "Status" }, },
+    value = { aliases = { "value", "Value", "Total Value" }, },
+
+    -- These Are Assigned but are not yest tested for or fully implemented
+    order_id = { aliases = { "order_id", "OrderID" }, },
+    customer_id = { aliases = { "customer_id", "CustomerID" }, },
+    invoice_id = { aliases = { "invoice_number", "Invoice", "Invoice Number" }, },
     order_notes = { aliases = { "order_notes", "Order Notes" }, },
     stumpage_cost = { aliases = { "stumpage_cost", "cost", "stumpage" }, },
     stumpage_origin = { aliases = { "stumpage_origin", "owner", "log owner", "purchased from" }, },
-    value = { aliases = { "value", "Value", "Total Value" }, },
+
+    -- These will be filtered out by the Order Builder until assigned
+    job_number = { aliases = { "job_number", "Job Number", "job", "Job", "job number" }, }, -- Should be different than order number
+    
+    -- Deprecated
+    -- beneficiary = { aliases = { "beneficiary", "Payee", "payee" }, },
+    -- distribution_type = { aliases = { "distribution_type", "Distribution", "Delivery" }, },
 }
 
 return Spec
