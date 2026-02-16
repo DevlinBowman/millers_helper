@@ -1,9 +1,12 @@
 -- classify/controller.lua
 --
--- Public control surface for classification module.
 
-local RowPipeline = require("classify.pipelines.row")
-local Trace       = require("tools.trace")
+--[[
+ingest
+-- ]]
+
+local objectPipeline = require("classify.pipelines.object")
+local Trace       = require("tools.trace.trace")
 local Contract    = require("core.contract")
 
 local Controller = {}
@@ -13,9 +16,9 @@ local Controller = {}
 ----------------------------------------------------------------
 
 Controller.CONTRACT = {
-    row = {
+    object = {
         in_ = {
-            row = true,
+            object = true,
         },
 
         out = {
@@ -31,20 +34,32 @@ Controller.CONTRACT = {
 -- Public API
 ----------------------------------------------------------------
 
-function Controller.row(row)
-    -- Trace.contract_enter("classify.controller.row")
-    -- Trace.contract_in(Controller.CONTRACT.row.in_)
+function Controller.object(object)
+    Trace.contract_enter("classify.controller.object")
+    Trace.contract_in(Controller.CONTRACT.object.in_)
 
-    Contract.assert({ row = row }, Controller.CONTRACT.row.in_)
+    local ok, result_or_err = pcall(function()
+        Contract.assert({ object = object }, Controller.CONTRACT.object.in_)
 
-    local result = RowPipeline.run(row)
+        local result = objectPipeline.run(object)
 
-    -- Trace.contract_out(Controller.CONTRACT.row.out, "classify.pipeline.row", "caller")
-    Contract.assert(result, Controller.CONTRACT.row.out)
+        Contract.assert(result, Controller.CONTRACT.object.out)
+        Trace.contract_out(
+            Controller.CONTRACT.object.out,
+            "classify.pipeline.object",
+            "caller"
+        )
 
-    -- Trace.contract_leave()
+        return result
+    end)
 
-    return result
+    Trace.contract_leave()
+
+    if not ok then
+        error(result_or_err, 0)
+    end
+
+    return result_or_err
 end
 
 return Controller

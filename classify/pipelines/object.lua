@@ -1,18 +1,19 @@
--- classify/pipelines/row.lua
+-- classify/pipelines/object.lua
 --
 -- Classification behavior pipeline.
 -- Composes alias + partition primitives into domain partitions.
+-- Operates on a single decoded object (flat attribute map).
 
 local Registry = require("classify.registry")
 
-local Row = {}
+local Object = {}
 
 ----------------------------------------------------------------
 -- Public API
 ----------------------------------------------------------------
 
-function Row.run(row)
-    assert(type(row) == "table", "classify.pipelines.row: row table required")
+function Object.run(object)
+    assert(type(object) == "table", "classify.pipelines.object: table required")
 
     local alias = Registry.alias
     local part  = Registry.partition
@@ -28,7 +29,7 @@ function Row.run(row)
         },
     }
 
-    for raw_key, value in pairs(row) do
+    for raw_key, value in pairs(object) do
         local canonical = alias.resolve(raw_key)
 
         if not canonical then
@@ -56,4 +57,4 @@ function Row.run(row)
     return out
 end
 
-return Row
+return Object
