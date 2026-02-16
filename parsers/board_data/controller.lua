@@ -1,14 +1,19 @@
 -- parsers/board_data/controller.lua
+--
+-- Public boundary for board_data domain.
 
 local ParseLinePipeline =
     require("parsers.board_data.pipelines.parse_line")
+
+local Trace    = require("tools.trace.trace")
+local Contract = require("core.contract")
 
 local Controller = {}
 
 Controller.CONTRACT = {
     parse_line = {
         in_ = {
-            raw = true,
+            raw  = true,
             opts = false,
         },
         out = {
@@ -25,10 +30,35 @@ Controller.CONTRACT = {
 ---@param opts table|nil
 ---@return table result
 function Controller.parse_line(raw, opts)
-    assert(type(raw) == "string", "Controller.parse_line(): raw string required")
-    opts = opts or {}
 
-    return ParseLinePipeline.run(raw, opts)
+    Trace.contract_enter("parsers.board_data.controller.parse_line")
+    Trace.contract_in(Controller.CONTRACT.parse_line.in_)
+
+    Contract.assert(
+        { raw = raw, opts = opts },
+        Controller.CONTRACT.parse_line.in_
+    )
+
+    local ok, result = pcall(function()
+        return ParseLinePipeline.run(raw, opts)
+    end)
+
+    if not ok then
+        Trace.contract_leave()
+        error(result, 2)
+    end
+
+    Contract.assert(result, Controller.CONTRACT.parse_line.out)
+
+    Trace.contract_out(
+        Controller.CONTRACT.parse_line.out,
+        "parsers.board_data",
+        "caller"
+    )
+
+    Trace.contract_leave()
+
+    return result
 end
 
 return Controller

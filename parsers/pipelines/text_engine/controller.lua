@@ -1,25 +1,29 @@
 -- parsers/pipelines/text_engine/controller.lua
 --
 -- Public control surface for text_engine.
--- PURPOSE:
---   • Define boundary + contract
---   • Delegate to pipeline
---   • No internal requires
+-- Boundary only:
+--   • Contract
+--   • Trace
+--   • Delegation
+--   • No internal orchestration
 
 local Pipeline = require("parsers.pipelines.text_engine.pipeline")
+
+local Trace    = require("tools.trace.trace")
+local Contract = require("core.contract")
 
 local Controller = {}
 
 Controller.CONTRACT = {
     run = {
         in_ = {
-            lines = "string|table", -- string | string[] | record[]
-            opts  = "table|nil",
+            lines = true,
+            opts  = false,
         },
         out = {
-            kind = "string",
-            data = "table",
-            meta = "table",
+            kind = true,
+            data = true,
+            meta = true,
         },
     },
 }
@@ -28,9 +32,35 @@ Controller.CONTRACT = {
 ---@param opts table|nil
 ---@return table result
 function Controller.run(lines, opts)
-    -- Contract enforcement can plug into your core.contract here.
-    -- Keeping it minimal since you didn’t include core.contract in this snippet.
-    return Pipeline.run(lines, opts)
+
+    Trace.contract_enter("parsers.pipelines.text_engine.controller.run")
+    Trace.contract_in(Controller.CONTRACT.run.in_)
+
+    Contract.assert(
+        { lines = lines, opts = opts },
+        Controller.CONTRACT.run.in_
+    )
+
+    local ok, result = pcall(function()
+        return Pipeline.run(lines, opts)
+    end)
+
+    if not ok then
+        Trace.contract_leave()
+        error(result, 2)
+    end
+
+    Contract.assert(result, Controller.CONTRACT.run.out)
+
+    Trace.contract_out(
+        Controller.CONTRACT.run.out,
+        "parsers.pipelines.text_engine",
+        "caller"
+    )
+
+    Trace.contract_leave()
+
+    return result
 end
 
 return Controller
