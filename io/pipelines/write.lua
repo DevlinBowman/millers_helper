@@ -1,5 +1,4 @@
--- io/write/write.lua
--- k i 
+-- io/pipelines/write.lua
 --
 -- Pure IO write primitives.
 -- NO format inference. NO shape inspection.

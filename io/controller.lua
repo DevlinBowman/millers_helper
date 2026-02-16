@@ -9,7 +9,7 @@ local Registry      = require("io.registry")
 local Validate      = Registry.validate.input
 local FS            = Registry.fs
 
-local Trace         = require("tools.trace")
+local Trace         = require("tools.trace.trace")
 local Contract      = require("core.contract")
 
 local Controller    = {}
@@ -77,7 +77,10 @@ end
 
 function Controller.read(path)
     Trace.contract_enter("io.controller.read")
-    Trace.contract_in(Controller.CONTRACT.read.in_)
+
+    -- Pass REAL runtime values to tracer
+    Trace.contract_in({ path = path })
+
     Contract.assert({ path = path }, Controller.CONTRACT.read.in_)
 
     local ok, err = Validate.read({
@@ -97,7 +100,9 @@ function Controller.read(path)
 
     result = normalize_read_envelope(path, result)
 
-    Trace.contract_out(Controller.CONTRACT.read.out, "registry.read", "caller")
+    -- You can optionally pass runtime result here too:
+    Trace.contract_out(result, "registry.read", "caller")
+
     Contract.assert(result, Controller.CONTRACT.read.out)
 
     Trace.contract_leave()
@@ -111,7 +116,10 @@ end
 
 function Controller.write(path, payload)
     Trace.contract_enter("io.controller.write")
-    Trace.contract_in(Controller.CONTRACT.write.in_)
+
+    -- Pass REAL runtime values
+    Trace.contract_in({ path = path, payload = payload })
+
     Contract.assert(
         { path = path, payload = payload },
         Controller.CONTRACT.write.in_
@@ -133,7 +141,9 @@ function Controller.write(path, payload)
         return nil, write_err
     end
 
-    Trace.contract_out(Controller.CONTRACT.write.out, "registry.write", "caller")
+    -- Pass runtime meta
+    Trace.contract_out(meta, "registry.write", "caller")
+
     Contract.assert(meta, Controller.CONTRACT.write.out)
 
     Trace.contract_leave()
