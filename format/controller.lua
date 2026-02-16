@@ -12,7 +12,7 @@ local Registry        = require("format.registry")
 local DecodePipeline  = require("format.pipelines.decode")
 local EncodePipeline  = require("format.pipelines.encode")
 
-local Trace    = require("tools.trace")
+local Trace    = require("tools.trace.trace")
 local Contract = require("core.contract")
 
 local Controller = {}
