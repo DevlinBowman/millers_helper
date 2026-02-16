@@ -4,7 +4,10 @@ local Schema = require("core.model.order.internal.schema")
 
 local Coerce = {}
 
---- Coerce authoritative order inputs and return unknown inputs separately.
+--- Coerce order inputs according to schema roles.
+--- Authoritative fields: strict coercion (error on failure)
+--- Derived fields: best-effort coercion (no hard error)
+---
 --- @param ctx table
 --- @return table coerced
 --- @return table unknown
@@ -14,20 +17,61 @@ function Coerce.run(ctx)
     local out     = {}
     local unknown = {}
 
-    for k, v in pairs(ctx) do
-        local def = Schema.fields[k]
-        if def and def.role == Schema.ROLES.AUTHORITATIVE then
-            if v ~= nil and def.coerce then
-                local coerced = def.coerce(v)
-                if coerced == nil and v ~= nil then
-                    error("Order.coerce(): failed coercion for field '" .. k .. "'")
+    for key, value in pairs(ctx) do
+        local def = Schema.fields[key]
+
+        --------------------------------------------------------
+        -- Known schema field
+        --------------------------------------------------------
+
+        if def then
+
+            ----------------------------------------------------
+            -- AUTHORITATIVE (strict)
+            ----------------------------------------------------
+
+            if def.role == Schema.ROLES.AUTHORITATIVE then
+
+                if value ~= nil and def.coerce then
+                    local coerced = def.coerce(value)
+
+                    if coerced == nil and value ~= nil then
+                        error(
+                            "Order.coerce(): failed coercion for field '" .. key .. "'"
+                        )
+                    end
+
+                    out[key] = coerced
+                else
+                    out[key] = value
                 end
-                out[k] = coerced
+
+            ----------------------------------------------------
+            -- DERIVED (lenient)
+            ----------------------------------------------------
+
+            elseif def.role == Schema.ROLES.DERIVED then
+
+                if value ~= nil and def.coerce then
+                    -- Attempt coercion but NEVER error
+                    out[key] = def.coerce(value)
+                else
+                    out[key] = value
+                end
+
             else
-                out[k] = v
+                -- Unknown role → programmer error
+                error(
+                    "Order.coerce(): unknown role for field '" .. key .. "'"
+                )
             end
+
+        --------------------------------------------------------
+        -- Unknown field
+        --------------------------------------------------------
+
         else
-            unknown[k] = v
+            unknown[key] = value
         end
     end
 

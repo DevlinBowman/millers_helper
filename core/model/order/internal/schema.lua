@@ -25,29 +25,32 @@ local function coerce_currency_number(v)
     return tonumber(s)
 end
 
+-- IMPORTANT:: THESE FIELDS MUST MATCH THE OUTPUTS FROM THE CLASSIFIER TO MAKE IT INTO THE FINAL DATA
+-- EXAMPLE; IF YOU EXPECT TO SEE 'CLIENT' IN THE OUTPUT, THE CLASSIFIER MUST RETURN A MAPPED 'CLIENT' ALIAS TO ASSOCIATE WITH
 Schema.fields = {
 
-    date              = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },
-    job_number        = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },
-    order_number      = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },
-    order_id          = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },
-    order_status      = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },
+    -- DEV NOTE - THESE HAVE BEEN 'CLASSIFIED'
 
-    customer_name     = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },
-    customer_id       = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },
-    beneficiary       = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },
+    order_number      = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },         -- Primary Unique Identifier
+    order_status      = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },         -- Open | Closed | Pending ...
+    date              = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },         -- Transaction Date
+    claimant          = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },         -- Initiating Party
+    client            = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },         -- Recieving Party
+    value             = { role = Schema.ROLES.DERIVED, coerce = coerce_currency_number }, -- Final Associated Total $ Amount
+    use               = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },         -- Sale | Personal | Gift
 
-    distribution_type = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },
-    invoice_number    = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },
+    -- DEV NOTE - THESE HAVE **NOT** BEEN 'CLASSIFIED'
+    order_id          = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring }, -- Unique ID for system storage
+    customer_id       = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring }, -- Unique ID for system Storage
+    invoice_id        = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring }, -- Unique ID for system storage
 
-    -- purpose           = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },
     order_notes       = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },
-    -- notes             = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },
 
-    stumpage_cost     = { role = Schema.ROLES.AUTHORITATIVE, coerce = coerce_currency_number },
-    stumpage_origin   = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },
 
-    value             = { role = Schema.ROLES.DERIVED,coerce = coerce_currency_number }
+    -- DEV NOTE - THESE HAVE NOT BEEN CONSIDERED AT ALL BUT ARE VERY IMPORTANT
+    stumpage_cost   = { role = Schema.ROLES.AUTHORITATIVE, coerce = coerce_currency_number },
+    stumpage_origin = { role = Schema.ROLES.AUTHORITATIVE, coerce = tostring },
+
 }
 
 return Schema

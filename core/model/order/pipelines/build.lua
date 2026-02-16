@@ -1,15 +1,42 @@
 -- core/model/order/pipelines/build.lua
+--
+-- Build pipeline for Order model.
+-- Supports recalculation of derived fields (e.g., value).
 
 local Registry = require("core.model.order.registry")
 
 local Build = {}
 
---- Build one canonical Order from one input ctx (1:1), returning unknown inputs separately.
+----------------------------------------------------------------
+-- Public API
+----------------------------------------------------------------
+
+--- Build one canonical Order.
 --- @param ctx table
---- @return table result { order=table, unknown=table }
-function Build.run(ctx)
+--- @param boards table[]|nil
+--- @return table { order=table, unknown=table }
+function Build.run(ctx, boards)
+
+    assert(type(ctx) == "table",
+        "Order.build(): ctx table required")
+
+    ------------------------------------------------------------
+    -- Coerce authoritative fields
+    ------------------------------------------------------------
+
     local order, unknown = Registry.coerce.run(ctx)
+
+    ------------------------------------------------------------
+    -- Validate
+    ------------------------------------------------------------
+
     Registry.validate.run(order)
+
+    ------------------------------------------------------------
+    -- Derive recalculable fields
+    ------------------------------------------------------------
+
+    Registry.derive.run(order, boards)
 
     return {
         order   = order,

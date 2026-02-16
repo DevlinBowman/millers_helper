@@ -9,25 +9,39 @@ local Controller = {}
 
 Controller.CONTRACT = {
     build = {
-        in_  = { ctx = true },
+        in_  = { ctx = true, ["boards?"] = true },
         out  = { order = true, unknown = true },
     },
 }
 
--- core/model/order/controller.lua
+--- Build canonical Order.
+--- @param ctx table
+--- @param boards table[]|nil
+--- @return table { order=table, unknown=table }
+function Controller.build(ctx, boards)
 
-function Controller.build(ctx)
     Trace.contract_enter("core.model.order.controller.build")
-    Trace.contract_in(Controller.CONTRACT.build.in_)
+    Trace.contract_in({ ctx = ctx, boards = boards })
 
     local ok, result_or_err = pcall(function()
-        assert(type(ctx) == "table", "Order.controller.build(): ctx table required")
-        Contract.assert({ ctx = ctx }, Controller.CONTRACT.build.in_)
 
-        local result = BuildPipeline.run(ctx)
+        assert(type(ctx) == "table",
+            "Order.controller.build(): ctx table required")
+
+        if boards ~= nil then
+            assert(type(boards) == "table",
+                "Order.controller.build(): boards must be table|nil")
+        end
+
+        Contract.assert(
+            { ctx = ctx, boards = boards },
+            Controller.CONTRACT.build.in_
+        )
+
+        local result = BuildPipeline.run(ctx, boards)
 
         Contract.assert(result, Controller.CONTRACT.build.out)
-        Trace.contract_out(Controller.CONTRACT.build.out)
+        Trace.contract_out(result)
 
         return result
     end)
