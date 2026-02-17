@@ -2,18 +2,14 @@
 --
 -- Boundary surface for order_context module.
 --
--- Responsibilities:
---   • Define contracts
---   • Trace
---   • Validate runtime inputs/outputs
---   • Delegate to pipelines
+-- RULE:
+--   • Only canonical domain data leaves this boundary.
+--   • Diagnostics (signals, decisions) flow vertically via Diagnostic bus.
 --
--- Exposes:
---   • resolve_group(rows, opts)
---   • compress(rows, identity_key, opts)
 
-local Contract = require("core.contract")
-local Trace    = require("tools.trace.trace")
+local Contract   = require("core.contract")
+local Trace      = require("tools.trace.trace")
+local Diagnostic = require("tools.diagnostic")
 
 local ResolveGroupPipeline = require("order_context.pipelines.resolve_group")
 local CompressPipeline     = require("order_context.pipelines.compress")
@@ -21,7 +17,7 @@ local CompressPipeline     = require("order_context.pipelines.compress")
 local Controller = {}
 
 ----------------------------------------------------------------
--- Contracts
+-- Contracts (Domain Only)
 ----------------------------------------------------------------
 
 Controller.CONTRACT = {
@@ -32,9 +28,7 @@ Controller.CONTRACT = {
             opts = false,
         },
         out = {
-            order     = true,
-            signals   = true,
-            decisions = true,
+            order = true,
         },
     },
 
@@ -55,9 +49,7 @@ Controller.CONTRACT = {
 ----------------------------------------------------------------
 
 --- Resolve distributed order fragments for a single group.
---- @param rows table[] classified rows
---- @param opts table|nil
---- @return table result { order=table, signals=table[], decisions=table }
+--- @return table result { order=table }
 function Controller.resolve_group(rows, opts)
 
     Trace.contract_enter("order_context.controller.resolve_group")
@@ -73,12 +65,28 @@ function Controller.resolve_group(rows, opts)
         assert(type(opts) == "table", "order_context.resolve_group(): opts must be table|nil")
     end
 
-    local result = ResolveGroupPipeline.run(rows, opts)
+    -- Run inside diagnostic scope
+    local ok, pipeline_result, scope =
+        Diagnostic.with_scope("order_context.resolve_group", function()
+            return ResolveGroupPipeline.run(rows, opts)
+        end)
+
+    if not ok then
+        error(pipeline_result)
+    end
+
+    -- HARD GATE
+    assert(type(pipeline_result) == "table", "resolve_group(): pipeline must return table")
+
+    local order = pipeline_result.order
+    assert(type(order) == "table", "resolve_group(): missing canonical order")
+
+    local result = { order = order }
 
     Contract.assert(result, Controller.CONTRACT.resolve_group.out)
     Trace.contract_out(result)
-
     Trace.contract_leave()
+
     return result
 end
 
@@ -87,11 +95,6 @@ end
 ----------------------------------------------------------------
 
 --- Group classified rows by identity and resolve order context per group.
---- Replaces legacy compression module.
----
---- @param rows table[] classified rows
---- @param identity_key string
---- @param opts table|nil
 --- @return table result { groups = table[] }
 function Controller.compress(rows, identity_key, opts)
 
@@ -115,8 +118,8 @@ function Controller.compress(rows, identity_key, opts)
 
     Contract.assert(result, Controller.CONTRACT.compress.out)
     Trace.contract_out(result)
-
     Trace.contract_leave()
+
     return result
 end
 

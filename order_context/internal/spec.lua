@@ -27,26 +27,43 @@ local Spec = {}
 
 Spec.fields = {
 
-    value = {
+    ----------------------------------------------------------------
+    -- CORE ORDER IDENTITY / STRUCTURAL FIELDS
+    ----------------------------------------------------------------
+
+    date            = { conflict = "strict", normalize = "normalize_date", },
+    client          = { conflict = "strict", },
+    claimant        = { conflict = "strict", },
+    order_number    = { conflict = "strict", },
+    order_id        = { conflict = "strict", },
+    customer_id     = { conflict = "strict", },
+    invoice_id      = { conflict = "strict", },
+    job_number      = { conflict = "strict", },
+
+    ----------------------------------------------------------------
+    -- STATUS / CONTEXT
+    ----------------------------------------------------------------
+
+    use             = { conflict = "keep_first", },
+    order_status    = { conflict = "keep_first", },
+    order_notes     = { conflict = "keep_first", },
+    stumpage_origin = { conflict = "keep_first", },
+
+    ----------------------------------------------------------------
+    -- NUMERIC / RECONCILABLE FIELDS
+    ----------------------------------------------------------------
+
+    value           = {
         conflict          = "recalculable",
         allow_sentinel    = true,
         sentinel_strategy = "drop",
         recalc_requires   = "boards_have_bf_price",
     },
 
-    -- examples of future fields
-
-    date = {
-        conflict = "strict",
-        normalize = "normalize_date"
-    },
-
-    order_number = {
-        conflict = "strict",
-    },
-
-    customer = {
-        conflict = "strict",
+    stumpage_cost   = {
+        conflict          = "recalculable",
+        allow_sentinel    = true,
+        sentinel_strategy = "drop",
     },
 }
 
