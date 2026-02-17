@@ -52,12 +52,13 @@ function FromIngest.run(input, opts)
             value          = batch.order.value or 0,
             total_bf       = total_bf,
             item_ids       = item_ids,
-            snapshot = {
-                order_number = batch.order.order_number,
-                customer_id  = batch.order.customer_id,
-                board_count  = #batch.boards,
-                board_ids    = item_ids,
-                value        = batch.order.value,
+            snapshot       = {
+                order_number  = batch.order.order_number,
+                customer_name = batch.order.customer_name,
+                customer_id   = batch.order.customer_id,
+                board_count   = #batch.boards,
+                board_ids     = item_ids,
+                value         = batch.order.value,
             }
         })
 

@@ -1,25 +1,29 @@
-local Trace    = require("tools.trace.trace")
-local Contract = require("core.contract")
+local Trace         = require("tools.trace.trace")
+local Contract      = require("core.contract")
 
-local Registry = require("core.domain.ledger.registry")
-local FromIngest = require("core.domain.ledger.pipelines.from_ingest")
+local Registry      = require("core.domain.ledger.registry")
+local FromIngest    = require("core.domain.ledger.pipelines.from_ingest")
 
-local Controller = {}
+local Controller    = {}
 
 Controller.CONTRACT = {
     from_ingest = {
-        in_  = { input = true, opts = false },
-        out  = { transactions = true },
+        in_ = { input = true, opts = false },
+        out = { transactions = true },
     },
 
     read_all = {
-        in_  = {},
-        out  = { transactions = true },
+        in_ = {},
+        out = { transactions = true },
     },
 
     read_one = {
-        in_  = { transaction_id = true },
-        out  = { transaction = false },
+        in_ = { transaction_id = true },
+        out = { transaction = false },
+    },
+    read_all_full = {
+        in_ = {},
+        out = { transactions = true },
     },
 }
 
@@ -64,8 +68,7 @@ function Controller.from_ingest(input, opts)
     ------------------------------------------------------------
 
     for i, batch in ipairs(batches) do
-
-        local txn_id =
+        local txn_id      =
             Registry.identity.from_batch(batch)
 
         local board_count = #(batch.boards or {})
@@ -177,6 +180,78 @@ function Controller.read_one(transaction_id)
     Trace.contract_leave()
 
     return out
+end
+
+function Controller.read_bundle(transaction_id)
+    Trace.contract_enter("core.domain.ledger.controller.read_bundle")
+    Trace.contract_in({ transaction_id = transaction_id })
+
+    Contract.assert(
+        { transaction_id = transaction_id },
+        { transaction_id = true }
+    )
+
+    local bundle =
+        Registry.storage.read_bundle(transaction_id)
+
+    Trace.contract_out(bundle, "ledger.read_bundle", "caller")
+    Trace.contract_leave()
+
+    return bundle
+end
+
+------------------------------------------------------------
+-- READ ALL (FULL REHYDRATION)
+------------------------------------------------------------
+
+function Controller.read_all_full()
+    Trace.contract_enter("core.domain.ledger.controller.read_all_full")
+
+    local index = Registry.ledger.read_all()
+    local hydrated = {}
+
+    for _, entry in ipairs(index) do
+        local bundle =
+            Registry.storage.read_bundle(entry.transaction_id)
+
+        hydrated[#hydrated + 1] = {
+            entry  = bundle.entry,
+            order  = bundle.order,
+            boards = bundle.boards,
+        }
+    end
+
+    local out = { transactions = hydrated }
+
+    Trace.contract_out(out, "ledger.read_all_full", "caller")
+    Trace.contract_leave()
+
+    return out
+end
+
+------------------------------------------------------------
+-- ANALYTICS (FULL REPORT)
+------------------------------------------------------------
+
+function Controller.analytics_full_report()
+    Trace.contract_enter("core.domain.ledger.controller.analytics_full_report")
+
+    local result =
+        require("core.domain.ledger.internal.analytics")
+        .full_report()
+
+    Trace.contract_out(result, "ledger.analytics_full_report", "caller")
+    Trace.contract_leave()
+
+    return result
+end
+
+function Controller.print_report()
+    local report = require("core.domain.ledger.internal.analytics")
+        .full_report()
+
+    require("core.domain.ledger.internal.analytics_printer")
+        .print_full(report)
 end
 
 return Controller
