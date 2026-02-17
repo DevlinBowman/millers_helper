@@ -1,82 +1,31 @@
 -- pipelines/ingestion/ingest.lua
+--
+-- Cross-domain ingestion pipeline.
+--
+-- Flow:
+--   IO → Decode → Parse → Classify → OrderContext.compress → Build
+--
+-- Compression now handled by order_context module.
 
-local IO         = require("io.controller")
-local Format     = require("format").controller
-local Parsers    = require("parsers.controller")
-local Classify   = require("classify.controller")
-local Compress   = require("pipelines.ingestion.compress")
+local IO           = require("io.controller")
+local Format       = require("format").controller
+local Parsers      = require("parsers.controller")
+local Classify     = require("classify.controller")
+local OrderContext = require("order_context").controller
 
-local OrderModel = require("core.model.order").controller
-local BoardModel = require("core.model.board").controller
+local OrderModel   = require("core.model.order").controller
+local BoardModel   = require("core.model.board").controller
 
-local Trace      = require("tools.trace")
-local Contract   = require("core.contract")
+local Trace        = require("tools.trace.trace")
+local Contract     = require("core.contract")
 
-local Ingest = {}
-
-----------------------------------------------------------------
--- DEBUG
-----------------------------------------------------------------
-
-local DEBUG = true
-
-local function header(title)
-    if not DEBUG then return end
-    print("\n------------------------------------------------------------")
-    print("INGEST STAGE:", title)
-    print("------------------------------------------------------------")
-end
-
-local function summarize(label, value)
-    if not DEBUG then return end
-
-    local t = type(value)
-    local count = 0
-
-    if t == "table" then
-        count = #value
-    end
-
-    print(string.format(
-        "%-15s | type=%-8s | count=%s",
-        label,
-        t,
-        tostring(count)
-    ))
-
-    if t == "table" and count > 0 then
-        local first = value[1]
-        if type(first) == "table" then
-            local keys = {}
-            for k in pairs(first) do
-                keys[#keys+1] = tostring(k)
-            end
-            table.sort(keys)
-            print("  sample keys:", table.concat(keys, ", "))
-        end
-    end
-end
-
-local function summarize_groups(groups)
-    if not DEBUG then return end
-    if type(groups) ~= "table" then return end
-
-    for i, g in ipairs(groups) do
-        local board_count = g.boards and #g.boards or 0
-        print(string.format(
-            "  group[%d] | boards=%d | order_keys=%s",
-            i,
-            board_count,
-            g.order and (next(g.order) and "yes" or "empty") or "nil"
-        ))
-    end
-end
+local Ingest       = {}
 
 ----------------------------------------------------------------
 -- Contract
 ----------------------------------------------------------------
 
-Ingest.CONTRACT = {
+Ingest.CONTRACT    = {
     read = {
         in_ = {
             path = true,
@@ -104,14 +53,23 @@ local function classify_inbound_objects(objects)
     return out
 end
 
+----------------------------------------------------------------
+-- Build (Flattened)
+----------------------------------------------------------------
+
 local function build_items(groups)
     local items = {}
 
     for _, group in ipairs(groups or {}) do
-
+        --------------------------------------------------------
+        -- Build Order (once per group)
+        --------------------------------------------------------
         local order_result = OrderModel.build(group.order or {})
         local built_order  = order_result.order
 
+        --------------------------------------------------------
+        -- Build Boards (one item per board)
+        --------------------------------------------------------
         for _, board_spec in ipairs(group.boards or {}) do
             local board_result = BoardModel.build(board_spec)
 
@@ -127,8 +85,58 @@ local function build_items(groups)
     return items
 end
 
-local function build_envelope(data, io_meta, stage, extra)
+----------------------------------------------------------------
+-- Build Order Batches
+----------------------------------------------------------------
 
+-- pipelines/ingestion/ingest.lua
+--
+-- replace function build_batches(groups)
+
+local function build_batches(groups)
+    local batches = {}
+
+    for _, group in ipairs(groups or {}) do
+        --------------------------------------------------------
+        -- 1) Build Boards FIRST (collect built boards)
+        --------------------------------------------------------
+        local built_boards = {}
+
+        for _, board_spec in ipairs(group.boards or {}) do
+            local board_result = BoardModel.build(board_spec)
+
+            if board_result.board then
+                built_boards[#built_boards + 1] = board_result.board
+            end
+        end
+
+        --------------------------------------------------------
+        -- 2) Build Order WITH built boards (may be empty)
+        --------------------------------------------------------
+        local order_result = OrderModel.build(
+            group.order or {},
+            built_boards
+        )
+
+        local built_order = order_result.order
+
+        --------------------------------------------------------
+        -- 3) Batch (domain only)
+        --------------------------------------------------------
+        batches[#batches + 1] = {
+            order  = built_order,
+            boards = built_boards,
+        }
+    end
+
+    return batches
+end
+
+----------------------------------------------------------------
+-- Envelope Builder
+----------------------------------------------------------------
+
+local function build_envelope(data, io_meta, stage, extra)
     local parse_meta = {
         stage = stage,
         count = type(data) == "table" and #data or 0,
@@ -158,53 +166,41 @@ end
 ----------------------------------------------------------------
 
 function Ingest.read(path, opts)
-
     Trace.contract_enter("pipelines.ingestion.ingest.read")
-    Trace.contract_in(Ingest.CONTRACT.read.in_)
+    Trace.contract_in({ path = path, opts = opts })
+    Contract.assert({ path = path, opts = opts }, Ingest.CONTRACT.read.in_)
 
-    local function run()
-
-        header("START")
-
-        Contract.assert({ path = path, opts = opts }, Ingest.CONTRACT.read.in_)
+    local ok, result_or_err = pcall(function()
         opts = opts or {}
         local stop_at = opts.stop_at
 
         --------------------------------------------------------
         -- IO
         --------------------------------------------------------
-
-        header("IO")
-
         local raw = IO.read(path)
-        local io_meta = raw.meta and raw.meta.io or {}
-
-        summarize("raw.data", raw.data)
+        local io_meta = raw and raw.meta and raw.meta.io or {}
 
         if stop_at == "io" then
+            Trace.contract_out(raw, "io.controller.read", "caller")
             return raw
         end
 
         --------------------------------------------------------
         -- Decode
         --------------------------------------------------------
-
-        header("DECODE")
-
         local decoded = Format.decode(raw.codec, raw.data)
 
-        summarize("decoded", decoded.data)
-
         if stop_at == "decode" then
-            return build_envelope(decoded.data, io_meta, "decode")
+            local env = build_envelope(decoded.data, io_meta, "decode", {
+                transport_codec = raw.codec
+            })
+            Trace.contract_out(env, "format.controller.decode", "caller")
+            return env
         end
 
         --------------------------------------------------------
         -- Parse
         --------------------------------------------------------
-
-        header("PARSE")
-
         local objects
 
         if decoded.codec == "lines" then
@@ -215,72 +211,78 @@ function Ingest.read(path, opts)
             objects = decoded.data
         end
 
-        summarize("objects", objects)
-
         if stop_at == "parse" then
-            return build_envelope(objects, io_meta, "parse")
+            local env = build_envelope(objects, io_meta, "parse", {
+                transport_codec = raw.codec
+            })
+            Trace.contract_out(env, "parsers.controller.parse_text", "caller")
+            return env
         end
 
         --------------------------------------------------------
         -- Classify
         --------------------------------------------------------
-
-        header("CLASSIFY")
-
         local classified = classify_inbound_objects(objects)
-        summarize("classified", classified)
 
         if stop_at == "classify" then
-            return build_envelope(classified, io_meta, "classify")
+            local env = build_envelope(classified, io_meta, "classify")
+            Trace.contract_out(env, "classify.controller.object", "caller")
+            return env
         end
 
         --------------------------------------------------------
-        -- Compress
+        -- OrderContext Compress (group + reconcile)
         --------------------------------------------------------
-
-        header("COMPRESS")
-
         local identity_key = "order_number"
-        local compressed   = Compress.run(classified, identity_key)
 
-        summarize("compressed", compressed)
-        summarize_groups(compressed)
+        local compress_result =
+            OrderContext.compress(classified, identity_key, opts.order_context)
+
+        local groups = compress_result.groups
 
         if stop_at == "compress" then
-            return build_envelope(compressed, io_meta, "compress")
+            local env = build_envelope(groups, io_meta, "compress", {
+                identity_key = identity_key,
+                shape        = "order_groups",
+            })
+            Trace.contract_out(env, "order_context.controller.compress", "caller")
+            return env
         end
 
         --------------------------------------------------------
-        -- Build
+        -- Build Models (Flattened)
         --------------------------------------------------------
-
-        header("BUILD")
-
-        local built = build_items(compressed)
-        summarize("built items", built)
+        -- local built = build_items(groups)
+        local built = build_batches(groups)
 
         if stop_at == "build" then
-            return build_envelope(built, io_meta, "build")
+            local env = build_envelope(built, io_meta, "build", {
+                identity_key = identity_key,
+            })
+            Trace.contract_out(env, "core.model.*.controller.build", "caller")
+            return env
         end
 
         --------------------------------------------------------
         -- Final
         --------------------------------------------------------
+        local final_env = build_envelope(built, io_meta, "done", {
+            identity_key = identity_key,
+        })
 
-        header("DONE")
-        summarize("final data", built)
+        Contract.assert(final_env, Ingest.CONTRACT.read.out)
 
-        return build_envelope(built, io_meta, "done")
-    end
+        Trace.contract_out(final_env, "pipelines.ingestion.ingest.read", "caller")
+        return final_env
+    end)
 
-    local ok, result = pcall(run)
     Trace.contract_leave()
 
     if not ok then
-        error(result, 0)
+        error(result_or_err, 0)
     end
 
-    return result
+    return result_or_err
 end
 
 return Ingest

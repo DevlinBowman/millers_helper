@@ -13,7 +13,7 @@ local Project = require("pipelines.export.project")
 local Format  = require("format.controller")
 local IO      = require("io.controller")
 
-local Trace    = require("tools.trace")
+local Trace    = require("tools.trace.trace")
 local Contract = require("core.contract")
 
 local Export = {}

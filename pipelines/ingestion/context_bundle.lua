@@ -16,11 +16,11 @@
 --       meta  = ...
 --     }
 
-local Ingest   = require("pipelines.ingestion.ingest")
-local Trace    = require("tools.trace")
-local Contract = require("core.contract")
+local Ingest    = require("pipelines.ingestion.ingest")
+local Trace     = require("tools.trace.trace")
+local Contract  = require("core.contract")
 
-local Bundle = {}
+local Bundle    = {}
 
 ----------------------------------------------------------------
 -- Contract
@@ -34,9 +34,9 @@ Bundle.CONTRACT = {
             opts        = false,
         },
         out = {
-            order  = true, -- table
-            boards = true, -- table[]
-            meta   = true,
+            codec = true,
+            data  = true,
+            meta  = true,
         },
     },
 }
@@ -45,22 +45,37 @@ Bundle.CONTRACT = {
 -- Helpers
 ----------------------------------------------------------------
 
+-- pipelines/context_bundle.lua
+-- function extract_single_order
+
 local function extract_single_order(result)
-    assert(result.codec == "orders", "expected ingest codec 'orders'")
+    assert(result.codec == "lua_object",
+        "expected ingest codec 'lua_object'")
 
     if type(result.data) ~= "table" or #result.data == 0 then
         return nil, "no orders found"
     end
 
     if #result.data > 1 then
-        return nil, "order file contains multiple orders; expected exactly one"
+        return nil,
+            "order file contains multiple order groups; expected exactly one"
     end
 
-    return result.data[1].order
+    local batch = result.data[1]
+
+    if not batch.order then
+        return nil, "order batch missing order object"
+    end
+
+    return batch.order
 end
 
+-- pipelines/context_bundle.lua
+-- function extract_all_boards
+
 local function extract_all_boards(result)
-    assert(result.codec == "orders", "expected ingest codec 'orders'")
+    assert(result.codec == "lua_object",
+        "expected ingest codec 'lua_object'")
 
     if type(result.data) ~= "table" or #result.data == 0 then
         return nil, "no data found in boards file"
@@ -68,9 +83,9 @@ local function extract_all_boards(result)
 
     local boards = {}
 
-    for _, item in ipairs(result.data) do
-        if type(item.boards) == "table" then
-            for _, board in ipairs(item.boards) do
+    for _, batch in ipairs(result.data) do
+        if type(batch.boards) == "table" then
+            for _, board in ipairs(batch.boards) do
                 boards[#boards + 1] = board
             end
         end
@@ -88,7 +103,6 @@ end
 ----------------------------------------------------------------
 
 function Bundle.load(order_path, boards_path, opts)
-
     Trace.contract_enter("pipelines.context_bundle.load")
     Trace.contract_in(Bundle.CONTRACT.load.in_)
 
@@ -135,9 +149,15 @@ function Bundle.load(order_path, boards_path, opts)
     -- Output Bundle
     ------------------------------------------------------------
     local out = {
-        order  = order,
-        boards = boards,
-        meta   = {
+        codec = "lua_object",
+        data  = {
+            {
+                order  = order,
+                boards = boards,
+            }
+        },
+        meta  = {
+            bundle        = true,
             order_source  = order_result.meta,
             boards_source = boards_result.meta,
         },
