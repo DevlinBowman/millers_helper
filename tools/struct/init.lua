@@ -1,6 +1,6 @@
 -- tools/struct/init.lua
 
-local StructTool = {}
+local StructTool     = {}
 
 ----------------------------------------------------------------
 -- Sections
@@ -13,12 +13,16 @@ StructTool.parser    = require("tools.struct.parser")
 StructTool.enum      = require("tools.struct.enum")
 StructTool.normalize = require("tools.struct.normalize")
 StructTool.alias     = require("tools.struct.alias")
+StructTool.runtime   = require("tools.struct.runtime")
+StructTool.path_map  = require("tools.struct.path_map")
+
 
 ----------------------------------------------------------------
 -- Section Registry
 ----------------------------------------------------------------
 
-local SECTIONS = {
+local SECTIONS       = {
+    runtime   = StructTool.runtime,
     schema    = StructTool.schema,
     contract  = StructTool.contract,
     spec      = StructTool.spec,
@@ -26,6 +30,7 @@ local SECTIONS = {
     enum      = StructTool.enum,
     normalize = StructTool.normalize,
     alias     = StructTool.alias,
+    path_map  = StructTool.path_map
 }
 
 ----------------------------------------------------------------

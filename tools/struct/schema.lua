@@ -28,7 +28,17 @@ function M.print(key)
         return
     end
 
-    local mod = require(path)
+    local ok, mod = pcall(require, path)
+    if not ok then
+        print("failed loading schema:", path)
+        return
+    end
+
+    if type(mod) ~= "table" then
+        print("schema module did not return a table:", path)
+        return
+    end
+
     Printer.print_schema(key, mod.fields or {})
 end
 
