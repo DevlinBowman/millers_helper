@@ -1,12 +1,11 @@
 -- tools/system_index/controller.lua
 
-local Trace      = require("tools.trace.trace")
-local Contract   = require("core.contract")
-local Registry   = require("tools.system_index.registry")
+local Trace    = require("tools.trace.trace")
+local Contract = require("core.contract")
+local Format   = require("tools.system_index.internal.format")
 
-local Filesystem = require("tools.system_index.internal.filesystem")
-local Persist    = require("tools.system_index.internal.persist")
-local Format     = require("tools.system_index.internal.format")
+local BuildPipeline       = require("tools.system_index.pipelines.build")
+local SyncCoveragePipeline = require("tools.system_index.pipelines.sync_coverage")
 
 local Controller = {}
 
@@ -17,17 +16,22 @@ local Controller = {}
 Controller.CONTRACT = {
 
     build = {
-        in_  = {},
+        in_  = { opts = false },
         out  = { modules = true },
     },
 
-    update_coverage = {
-        in_  = {},
-        out  = { stored = true },
+    sync_coverage = {
+        in_  = { opts = false },
+        out  = {
+            stored     = true,
+            discovered = true,
+            diff       = true,
+            wrote      = true,
+        },
     },
 
     check_missing = {
-        in_  = {},
+        in_  = { opts = false },
         out  = {
             missing = true,
             new     = true,
@@ -46,184 +50,70 @@ local function print_list(title, list)
     end
 end
 
-local function safe_require_all_arc_modules(root)
-    local discovered = Filesystem.discover(root)
-
-    print("\n[system_index] ARC MODULES FOUND:")
-    for _, name in ipairs(discovered) do
-        print("  - " .. name)
-    end
-
-    local loaded_now = {}
-    local skipped    = {}
-    local failed     = {}
-
-    for _, module_name in ipairs(discovered) do
-        if module_name:match("^tools%.system_index") then
-            skipped[#skipped + 1] = module_name
-
-        elseif package.loaded[module_name] then
-            skipped[#skipped + 1] = module_name
-
-        else
-            local ok, err = pcall(require, module_name)
-
-            if ok then
-                loaded_now[#loaded_now + 1] = module_name
-            else
-                failed[#failed + 1] = module_name
-                print("\n  ✗ REQUIRE FAILED:", module_name)
-                print("    →", tostring(err))
-            end
-        end
-    end
-
-    print_list("[system_index] Newly Loaded", loaded_now)
-    print_list("[system_index] Skipped (already loaded or excluded)", skipped)
-    print_list("[system_index] Failed", failed)
-
-    print("\n[system_index] Require Summary")
-    print("  Found:        " .. #discovered)
-    print("  Loaded now:   " .. #loaded_now)
-    print("  Skipped:      " .. #skipped)
-    print("  Failed:       " .. #failed)
-
-    return discovered
-end
-
-local function count_map_keys(tbl)
-    local count = 0
-    for _ in pairs(tbl) do
-        count = count + 1
-    end
-    return count
-end
-
-local function list_to_set(list)
-    local set = {}
-    for _, value in ipairs(list) do
-        set[value] = true
-    end
-    return set
-end
-
 ----------------------------------------------------------------
 -- Runtime Snapshot
 ----------------------------------------------------------------
 
-function Controller.build()
+--- Build a runtime snapshot by scanning package.loaded for arc modules.
+--- @param opts table|nil { root?: string, prime_runtime?: boolean, verbose?: boolean }
+--- @return table result { modules=table, prime=table|nil, summary=table }
+function Controller.build(opts)
     Trace.contract_enter("system_index.build")
     Trace.contract_in(Controller.CONTRACT.build.in_)
 
-    print("\n=== SYSTEM INDEX BUILD ===")
+    Contract.assert({ opts = opts }, Controller.CONTRACT.build.in_)
 
-    safe_require_all_arc_modules(".")
-
-    local modules = Registry.scan()
-
-    print("\n[system_index] RUNTIME SNAPSHOT MODULES:")
-    local snapshot_names = {}
-    for name in pairs(modules) do
-        snapshot_names[#snapshot_names + 1] = name
-    end
-    table.sort(snapshot_names)
-
-    for _, name in ipairs(snapshot_names) do
-        print("  - " .. name)
-    end
-
-    print("\n[system_index] Snapshot Summary")
-    print("  Indexed modules: " .. count_map_keys(modules))
-
-    local result = {
-        modules = modules,
-    }
+    local result = BuildPipeline.run(opts or {})
 
     Contract.assert(result, Controller.CONTRACT.build.out)
     Trace.contract_out(Controller.CONTRACT.build.out)
 
-    print("=== BUILD COMPLETE ===\n")
+    return result
+end
+
+----------------------------------------------------------------
+-- Coverage Sync (single-step update)
+----------------------------------------------------------------
+
+--- Discover modules, diff against stored coverage, optionally write coverage.
+--- Default behavior: write coverage.
+--- @param opts table|nil { root?: string, write?: boolean }
+--- @return table result { stored=string[], discovered=string[], diff={missing=string[], new=string[]}, wrote=boolean }
+function Controller.sync_coverage(opts)
+    Trace.contract_enter("system_index.sync_coverage")
+    Trace.contract_in(Controller.CONTRACT.sync_coverage.in_)
+
+    Contract.assert({ opts = opts }, Controller.CONTRACT.sync_coverage.in_)
+
+    local result = SyncCoveragePipeline.run(opts or {})
+
+    Contract.assert(result, Controller.CONTRACT.sync_coverage.out)
+    Trace.contract_out(Controller.CONTRACT.sync_coverage.out)
 
     return result
 end
 
 ----------------------------------------------------------------
--- Coverage Update
+-- Back-compat: Missing Detection (no write)
 ----------------------------------------------------------------
 
-function Controller.update_coverage()
-    Trace.contract_enter("system_index.update_coverage")
-    Trace.contract_in(Controller.CONTRACT.update_coverage.in_)
-
-    print("\n=== SYSTEM INDEX COVERAGE UPDATE ===")
-
-    local discovered = Filesystem.discover(".")
-
-    print("\n[system_index] Writing coverage file:")
-    for _, name in ipairs(discovered) do
-        print("  - " .. name)
-    end
-
-    Persist.save(discovered)
-
-    print("\n[system_index] Coverage saved (" .. #discovered .. " modules)")
-    print("=== COVERAGE UPDATE COMPLETE ===\n")
-
-    local result = {
-        stored = discovered,
-    }
-
-    Contract.assert(result, Controller.CONTRACT.update_coverage.out)
-    Trace.contract_out(Controller.CONTRACT.update_coverage.out)
-
-    return result
-end
-
-----------------------------------------------------------------
--- Missing Detection
-----------------------------------------------------------------
-
-function Controller.check_missing()
+--- Compatibility wrapper that returns only diff lists without writing coverage.
+--- @param opts table|nil { root?: string }
+--- @return table result { missing=string[], new=string[] }
+function Controller.check_missing(opts)
     Trace.contract_enter("system_index.check_missing")
     Trace.contract_in(Controller.CONTRACT.check_missing.in_)
 
-    print("\n=== SYSTEM INDEX DIFF ===")
+    Contract.assert({ opts = opts }, Controller.CONTRACT.check_missing.in_)
 
-    local discovered     = Filesystem.discover(".")
-    local stored         = Persist.load()
-
-    local discovered_set = list_to_set(discovered)
-    local stored_set     = list_to_set(stored)
-
-    local missing        = {}
-    local new            = {}
-
-    for name in pairs(stored_set) do
-        if not discovered_set[name] then
-            missing[#missing + 1] = name
-        end
-    end
-
-    for name in pairs(discovered_set) do
-        if not stored_set[name] then
-            new[#new + 1] = name
-        end
-    end
-
-    table.sort(missing)
-    table.sort(new)
-
-    print_list("[system_index] Missing Modules", missing)
-    print_list("[system_index] New Modules", new)
-
-    print("\n[system_index] Diff Summary")
-    print("  Missing: " .. #missing)
-    print("  New:     " .. #new)
-    print("=== DIFF COMPLETE ===\n")
+    local sync = Controller.sync_coverage({
+        root  = (opts and opts.root) or ".",
+        write = false,
+    })
 
     local result = {
-        missing = missing,
-        new     = new,
+        missing = sync.diff.missing or {},
+        new     = sync.diff.new or {},
     }
 
     Contract.assert(result, Controller.CONTRACT.check_missing.out)
@@ -236,16 +126,37 @@ end
 -- Presentation
 ----------------------------------------------------------------
 
-function Controller.print_snapshot()
-    local snapshot = Controller.build()
-    local text = Format.render_snapshot(snapshot)
-    print(text)
+--- Print snapshot (optional priming; default prime_runtime=true).
+--- @param opts table|nil { root?: string, prime_runtime?: boolean, verbose?: boolean }
+function Controller.print_snapshot(opts)
+    local snapshot = Controller.build(opts)
+    print(Format.render_snapshot(snapshot))
 end
 
-function Controller.print_diff()
-    local diff = Controller.check_missing()
-    local text = Format.render_diff(diff)
-    print(text)
+--- Print diff (never writes coverage).
+--- @param opts table|nil { root?: string }
+function Controller.print_diff(opts)
+    local diff = Controller.check_missing(opts)
+    print(Format.render_diff(diff))
+end
+
+--- Print diff and (optionally) update coverage in one shot.
+--- @param opts table|nil { root?: string, write?: boolean }
+function Controller.print_sync(opts)
+    local sync = Controller.sync_coverage(opts)
+    print(Format.render_diff(sync.diff))
+
+    print("\nCOVERAGE SYNC")
+    print("  wrote:      " .. tostring(sync.wrote))
+    print("  discovered: " .. tostring(#(sync.discovered or {})))
+    print("  stored:     " .. tostring(#(sync.stored or {})))
+
+    if (sync.diff.missing and #sync.diff.missing > 0) then
+        print_list("[system_index] Missing Modules", sync.diff.missing)
+    end
+    if (sync.diff.new and #sync.diff.new > 0) then
+        print_list("[system_index] New Modules", sync.diff.new)
+    end
 end
 
 return Controller
