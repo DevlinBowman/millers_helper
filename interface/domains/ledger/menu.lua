@@ -1,86 +1,99 @@
 -- interface/domains/ledger/menu.lua
+--
+-- Interactive ledger menu (delegates through CLI)
 
-local M = {}
+local CLI     = require("interface.shells.cli.init")
+local Session = require("interface.session")
 
-local function split_words(line)
-    local out = {}
-    for w in tostring(line or ""):gmatch("%S+") do
-        out[#out + 1] = w
+local M       = {}
+
+local function tokenize(input)
+    local argv = {}
+    for token in input:gmatch("%S+") do
+        argv[#argv + 1] = token
     end
-    return out
+    return argv
 end
 
 local function print_help()
-    print("ledger commands:")
-    print("  ledger <path>            set ledger path")
-    print("  inspect                  list ledger index")
-    print("  browse                   alias of inspect")
-    print("  open <id|index>          open full bundle")
-    print("  ingest <input_path>      runtime load -> commit")
-    print("  browser                  interactive arrow browser")
-    print("  back                     return to app mode")
+    print([[
+ledger menu:
+  set <path>          set ledger path
+  show                show current ledger
+  inspect             list transactions
+  open <id|index>
+  ingest <path>
+  browser
+  back
+]])
 end
 
-function M.handle(controller, line)
+function M.run()
+    print("\n=== Ledger Menu ===")
 
-    local parts = split_words(line)
-    local cmd   = parts[1]
+    while true do
+        local current = Session.get_ledger_path()
+        local label = current and ("ledger(" .. current .. ")> ")
+            or "ledger(no-ledger)> "
 
-    if not cmd or cmd == "" then
-        print_help()
-        return
-    end
+        io.write(label)
+        local input = io.read()
+        if not input then return end
 
-    if cmd == "help" or cmd == "?" then
-        print_help()
-        return
-    end
+        input = input:gsub("^%s+", ""):gsub("%s+$", "")
+        if input == "" then goto continue end
 
-    if cmd == "back" then
-        return "back"
-    end
+        if input == "back" then
+            return
+        end
 
-    ------------------------------------------------------------
-    -- Build ctx
-    ------------------------------------------------------------
+        if input == "q" or input == 'exit' then
+            require("interface.quit").now()
+        end
 
-    local ctx = {
-        positionals = {},
-        flags = {},
-        usage = function() print_help() end,
-        die = function(_, msg)
-            io.stderr:write("error: " .. tostring(msg) .. "\n")
-        end,
-    }
+        if input == "help" then
+            print_help()
+            goto continue
+        end
 
-    for i = 2, #parts do
-        ctx.positionals[#ctx.positionals + 1] = parts[i]
-    end
+        --------------------------------------------------------
+        -- Native menu commands
+        --------------------------------------------------------
 
-    ------------------------------------------------------------
-    -- Direct dispatch (NO registry indirection)
-    ------------------------------------------------------------
+        if input:match("^set%s+") then
+            local path = input:match("^set%s+(.+)")
+            if path then
+                Session.set_ledger_path(path)
+                print("ledger set:", path)
+            end
+            goto continue
+        end
 
-    if cmd == "ledger" then
-        return controller:ledger(ctx)
+        if input == "show" then
+            local path = Session.get_ledger_path()
+            if path then
+                print("current ledger:", path)
+            else
+                print("no ledger set")
+            end
+            goto continue
+        end
 
-    elseif cmd == "inspect" then
-        return controller:inspect(ctx)
+        --------------------------------------------------------
+        -- Delegate to CLI
+        --------------------------------------------------------
 
-    elseif cmd == "browse" then
-        return controller:browse(ctx)
+        local argv = tokenize("ledger " .. input)
 
-    elseif cmd == "open" then
-        return controller:open(ctx)
+        local ok, err = pcall(function()
+            CLI.run(argv)
+        end)
 
-    elseif cmd == "ingest" then
-        return controller:ingest(ctx)
+        if not ok then
+            print("error:", err)
+        end
 
-    elseif cmd == "browser" then
-        return controller:browser()
-
-    else
-        print_help()
+        ::continue::
     end
 end
 

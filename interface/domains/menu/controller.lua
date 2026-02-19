@@ -1,15 +1,13 @@
 -- interface/domains/menu/controller.lua
 
-local Registry = require("interface.registry")
+local Registry     = require("interface.registry")
 
-local Controller = {}
+local Controller   = {}
 Controller.__index = Controller
 
 function Controller.new()
     return setmetatable({
         history = {},
-        current_domain = nil,
-        sessions = {},
     }, Controller)
 end
 
@@ -21,122 +19,53 @@ local function tokenize(input)
     return argv
 end
 
-local function print_domains()
-    print("\nAvailable domains:")
-    for name, _ in pairs(Registry.domains_all()) do
-        if name ~= "menu" then
-            print("  - " .. name)
-        end
-    end
-    print("")
+local function print_help()
+    print([[
+app commands:
+  ledger        enter ledger menu
+  compare ...
+  exit
+]])
 end
 
 function Controller:run()
-    local CLI = require("interface.shells.cli.init")
-
     print("\n=== Interactive Mode ===")
-    print("Type 'help' for commands.\n")
 
     while true do
-
-        local prompt_label = self.current_domain
-            and (self.current_domain .. "> ")
-            or "app> "
-
-        io.write(prompt_label)
+        io.write("app> ")
         local input = io.read()
         if not input then return end
 
         input = input:gsub("^%s+", ""):gsub("%s+$", "")
         if input == "" then goto continue end
 
-        table.insert(self.history, input)
-
-        --------------------------------------------------------
-        -- Builtins
-        --------------------------------------------------------
-
-        if input == "exit" then return end
-
-        if input == "clear" then
-            os.execute("clear")
-            goto continue
-        end
-
-        if input == "domains" then
-            print_domains()
-            goto continue
-        end
-
-        if input == "history" then
-            for i, cmd in ipairs(self.history) do
-                print(string.format("%02d  %s", i, cmd))
-            end
-            goto continue
+        if input == "q" or input == "exit" then
+            require("interface.quit").now()
         end
 
         if input == "help" then
-            print([[
-Built-in commands:
-  domains
-  use <domain>
-  back
-  history
-  clear
-  exit
-]])
+            print_help()
             goto continue
         end
 
         --------------------------------------------------------
-        -- Domain Switching
+        -- Enter Ledger Menu
         --------------------------------------------------------
 
-        local use_domain = input:match("^use%s+(%S+)")
-        if use_domain then
-            if Registry.domains_all()[use_domain] then
-                self.current_domain = use_domain
-                print("Switched to domain:", use_domain)
-            else
-                print("Unknown domain:", use_domain)
-            end
-            goto continue
-        end
-
-        if input == "back" then
-            self.current_domain = nil
+        if input == "ledger" then
+            local menu = require("interface.domains.ledger.menu")
+            menu.run()
             goto continue
         end
 
         --------------------------------------------------------
-        -- Domain Interactive Delegation (FIXED)
-        --------------------------------------------------------
-
-        if self.current_domain then
-
-            local domain_menu = require(
-                "interface.domains." .. self.current_domain .. ".menu"
-            )
-
-            if domain_menu and domain_menu.handle then
-
-                local controller = Registry.controller_for(self.current_domain)
-
-                -- Correct call signature:
-                -- handle(controller, line)
-                domain_menu.handle(controller, input)
-
-                goto continue
-            end
-        end
-
-        --------------------------------------------------------
-        -- Fallback → raw CLI execution
+        -- Default: CLI execution
         --------------------------------------------------------
 
         local argv = tokenize(input)
 
         local ok, err = pcall(function()
+            local CLI = require("interface.shells.cli.init")
             CLI.run(argv)
         end)
 
