@@ -1,7 +1,8 @@
 -- interface/domains/compare/controller.lua
 
-local RuntimeAPI = require("app.api.runtime")
-local Compare    = require("core.domain.compare")
+local Resolver = require("interface.input_resolver")
+local Runtime  = require("core.domain.runtime.controller")
+local Compare  = require("core.domain.compare")
 
 local Controller = {}
 Controller.__index = Controller
@@ -24,33 +25,38 @@ local function list_batches(label, batches)
     for i, bundle in ipairs(batches) do
         local id = order_id_of(bundle, "batch_" .. tostring(i))
         local boards_n = #((bundle or {}).boards or {})
-        print(string.format("%02d | boards: %-3d | id: %s", i, boards_n, tostring(id)))
+        print(string.format(
+            "%02d | boards: %-3d | id: %s",
+            i,
+            boards_n,
+            tostring(id)
+        ))
     end
 end
 
-local function select_bundle(ctx, side_label, batches, index_flag_key, list_flag_key)
+local function select_bundle(ctx, label, batches, index_flag, list_flag)
     local count = #batches
 
     if count == 0 then
-        ctx:die(side_label .. ": no batches returned")
+        ctx:die(label .. ": no batches returned")
     end
 
     if count == 1 then
         return batches[1]
     end
 
-    print(side_label .. ": multiple orders detected (" .. tostring(count) .. ")")
+    print(label .. ": multiple batches detected (" .. tostring(count) .. ")")
 
-    if ctx.flags[list_flag_key] then
-        list_batches(side_label, batches)
+    if ctx.flags[list_flag] then
+        list_batches(label, batches)
         return nil, "listed"
     end
 
-    local idx_raw = ctx.flags[index_flag_key]
+    local idx_raw = ctx.flags[index_flag]
     if idx_raw ~= nil then
         local idx = tonumber(idx_raw)
         if not idx or not batches[idx] then
-            ctx:die(side_label .. ": invalid " .. index_flag_key .. " " .. tostring(idx_raw))
+            ctx:die(label .. ": invalid " .. index_flag .. " " .. tostring(idx_raw))
         end
         return batches[idx]
     end
@@ -60,11 +66,11 @@ end
 
 local function print_usage_hints()
     print("use one of:")
-    print("  --list                  list input orders")
-    print("  --index <n>             select input order batch")
-    print("  --vendor-list           list vendor batches")
-    print("  --vendor-index <n>      select vendor batch")
-    print("  --nevermind             abort")
+    print("  --list")
+    print("  --index <n>")
+    print("  --vendor-list")
+    print("  --vendor-index <n>")
+    print("  --nevermind")
 end
 
 local function print_skipped(model)
@@ -91,7 +97,8 @@ end
 
 -- usage:
 --   compare <input_path> <vendor_path>
---   compare <input_path> <vendor_path> --index N --vendor-index M
+--   compare --order order.txt --boards boards.txt vendor.txt
+--   compare --ledger ledger.lua vendor.txt
 function Controller:run(ctx)
 
     if ctx.flags.nevermind then
@@ -99,27 +106,17 @@ function Controller:run(ctx)
         return
     end
 
-    if #ctx.positionals < 2 then
+    ------------------------------------------------------------
+    -- Resolve Primary Input (Universal)
+    ------------------------------------------------------------
+
+    local input_runtime = Resolver.resolve(ctx)
+
+    if not input_runtime then
         return ctx:usage()
     end
 
-    ------------------------------------------------------------
-    -- Paths
-    ------------------------------------------------------------
-
-    local input_path = ctx.positionals[1]
-
-    local vendor_paths = {}
-    for i = 2, #ctx.positionals do
-        vendor_paths[#vendor_paths + 1] = ctx.positionals[i]
-    end
-
-    ------------------------------------------------------------
-    -- Load Input
-    ------------------------------------------------------------
-
-    local input_env  = RuntimeAPI.load(input_path)
-    local input_batches = input_env.batches or {}
+    local input_batches = input_runtime:batches()
 
     local input_bundle, input_state =
         select_bundle(ctx, "input", input_batches, "index", "list")
@@ -128,39 +125,60 @@ function Controller:run(ctx)
         return
     end
 
-    if input_bundle == nil then
+    if not input_bundle then
         print("selection required")
         print_usage_hints()
         return
     end
 
     ------------------------------------------------------------
-    -- Load Vendors (Multiple)
+    -- Vendor Paths (always positional after input)
+    ------------------------------------------------------------
+
+    local vendor_paths = {}
+
+    -- Vendors must be positional arguments AFTER input resolution.
+    -- We treat all remaining positionals as vendor paths.
+    for i = 2, #ctx.positionals do
+        vendor_paths[#vendor_paths + 1] = ctx.positionals[i]
+    end
+
+    if #vendor_paths == 0 then
+        ctx:die("no vendor input provided")
+    end
+
+    ------------------------------------------------------------
+    -- Load Vendors
     ------------------------------------------------------------
 
     local sources = {}
 
     for _, vendor_path in ipairs(vendor_paths) do
 
-        local vendor_env = RuntimeAPI.load(vendor_path)
-        local vendor_batches = vendor_env.batches or {}
+        local vendor_runtime = Runtime.load(vendor_path)
+        local vendor_batches = vendor_runtime:batches()
 
         local vendor_bundle, vendor_state =
-            select_bundle(ctx, vendor_path, vendor_batches, "vendor_index", "vendor_list")
+            select_bundle(
+                ctx,
+                vendor_path,
+                vendor_batches,
+                "vendor_index",
+                "vendor_list"
+            )
 
         if vendor_state == "listed" then
             return
         end
 
-        if vendor_bundle == nil then
+        if not vendor_bundle then
             print("selection required for vendor:", vendor_path)
             print_usage_hints()
             return
         end
 
-        -- derive display name from file basename
         local name = vendor_path:match("([^/]+)$") or vendor_path
-        name = name:gsub("%.%w+$", "") -- strip extension
+        name = name:gsub("%.%w+$", "")
 
         sources[#sources + 1] = {
             name   = name,

@@ -17,7 +17,27 @@ function Parser.parse(argv)
     while i <= #argv do
         local arg = argv[i]
 
-        if arg == "--list" then
+        --------------------------------------------------------
+        -- Universal flags
+        --------------------------------------------------------
+
+        if arg == "--ledger" then
+            set_flag(flags, "ledger", argv[i + 1])
+            i = i + 1
+
+        elseif arg == "--order" then
+            set_flag(flags, "order", argv[i + 1])
+            i = i + 1
+
+        elseif arg == "--boards" then
+            set_flag(flags, "boards", argv[i + 1])
+            i = i + 1
+
+        --------------------------------------------------------
+        -- Existing flags
+        --------------------------------------------------------
+
+        elseif arg == "--list" then
             set_flag(flags, "list", true)
 
         elseif arg == "--vendor-list" then

@@ -5,9 +5,9 @@ local Registry = require("interface.registry")
 local Context  = require("interface.context")
 
 -- Load domains
-require("interface.domains.runtime")
 require("interface.domains.ledger")
 require("interface.domains.compare")
+require("interface.domains.menu")
 
 local CLI = {}
 
