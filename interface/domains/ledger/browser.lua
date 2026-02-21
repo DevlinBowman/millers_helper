@@ -1,28 +1,13 @@
+-- interface/domains/ledger/browser.lua
+--
+-- Browser view. NO direct stty here. Uses Term policy from TUI.
+
 local Format = require("interface.domains.ledger.format")
 
 local M = {}
 
-------------------------------------------------------------
--- Terminal Helpers
-------------------------------------------------------------
-
-local function term_raw_on()
-    os.execute("stty -echo -icanon min 1 time 0")
-end
-
-local function term_raw_off()
-    os.execute("stty echo icanon")
-end
-
-local function clear()
-    io.write("\27[2J\27[H")
-end
-
-------------------------------------------------------------
--- Browser Entry
-------------------------------------------------------------
-
-function M.run(controller, path, all_txns)
+function M.run(env, path, all_txns)
+    local Term = env.term
 
     if not all_txns or #all_txns == 0 then
         print("ledger empty")
@@ -33,12 +18,7 @@ function M.run(controller, path, all_txns)
     local selected = 1
     local filter_query = ""
 
-    ------------------------------------------------------------
-    -- Filtering
-    ------------------------------------------------------------
-
     local function apply_filter(query)
-
         if not query or query == "" then
             filtered = all_txns
             return
@@ -56,21 +36,15 @@ function M.run(controller, path, all_txns)
             or type:find(query, 1, true)
             or date:find(query, 1, true)
             then
-                table.insert(filtered, t)
+                filtered[#filtered + 1] = t
             end
         end
     end
 
-    ------------------------------------------------------------
-    -- Render
-    ------------------------------------------------------------
-
     local function render()
-
-        clear()
-
+        Term.clear()
         print("=== LEDGER BROWSER ===")
-        print("↑/↓ j/k move | Enter open | / filter | c clear | q quit")
+        print("↑/↓ j/k move | Enter open | / filter | c clear | q quit | Ctrl+Z suspend")
         print("filter:", filter_query)
         print("")
 
@@ -91,79 +65,55 @@ function M.run(controller, path, all_txns)
         print("shown:", #filtered, "of", #all_txns)
     end
 
-    ------------------------------------------------------------
-    -- Raw Mode Loop
-    ------------------------------------------------------------
-
-term_raw_on()
-
-local function cleanup()
-    term_raw_off()
-    io.write("\27[2J\27[H")
-end
-
-local ok, err = pcall(function()
-
+    return Term.with_raw(function()
         while true do
-
             render()
-            local ch = io.read(1)
+            local key = Term.read_key()
 
-            if ch == "q" then
-                term_raw_off()
-                require("interface.quit").now()
+            if Term.handle_global_key(key) then
+                -- suspend handled; redraw on resume
             end
 
-            if ch == "j" then
-                selected = math.min(#filtered, selected + 1)
+            if key.kind == "char" then
+                local ch = key.ch
 
-            elseif ch == "k" then
-                selected = math.max(1, selected - 1)
-
-            elseif ch == "/" then
-                term_raw_off()
-                io.write("\nfilter> ")
-                local input = io.read()
-                term_raw_on()
-
-                filter_query = input or ""
-                apply_filter(filter_query)
-                selected = 1
-
-            elseif ch == "c" then
-                filter_query = ""
-                apply_filter("")
-                selected = 1
-
-            elseif ch == "\27" then
-                io.read(1)
-                local dir = io.read(1)
-
-                if dir == "A" then
-                    selected = math.max(1, selected - 1)
-                elseif dir == "B" then
+                if ch == "q" then
+                    Term.cleanup()
+                    require("interface.quit").now()
+                elseif ch == "j" then
                     selected = math.min(#filtered, selected + 1)
+                elseif ch == "k" then
+                    selected = math.max(1, selected - 1)
+                elseif ch == "c" then
+                    filter_query = ""
+                    apply_filter("")
+                    selected = 1
+                elseif ch == "/" then
+                    Term.raw_off()
+                    io.write("\nfilter> ")
+                    local input = io.read()
+                    Term.raw_on()
+                    filter_query = input or ""
+                    apply_filter(filter_query)
+                    selected = 1
                 end
 
-            elseif ch == "\r" or ch == "\n" then
-                if filtered[selected] then
-                    cleanup()
-                    controller:open({
-                        positionals = { filtered[selected].transaction_id },
-                        flags = { ledger = path }
-                    })
+            elseif key.kind == "up" then
+                selected = math.max(1, selected - 1)
+            elseif key.kind == "down" then
+                selected = math.min(#filtered, selected + 1)
+            elseif key.kind == "enter" then
+                local row = filtered[selected]
+                if row then
+                    Term.cleanup()
+                    env.open(row.transaction_id)
                     io.write("\npress any key...")
-                    term_raw_on()
+                    Term.raw_on()
                     io.read(1)
                 end
             end
         end
     end)
-
-    term_raw_off()
-    clear()
-
-    if not ok then error(err, 0) end
 end
 
 return M
