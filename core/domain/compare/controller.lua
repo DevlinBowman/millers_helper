@@ -2,17 +2,17 @@
 --
 -- Boundary + contracts + tracing (arc-spec).
 
-local Contract = require("core.contract")
-local Trace    = require("tools.trace.trace")
+local Contract      = require("core.contract")
+local Trace         = require("tools.trace.trace")
 
-local Registry = require("core.domain.compare.registry")
+local Registry      = require("core.domain.compare.registry")
 
-local Pipelines = {
+local Pipelines     = {
     build_model = require("core.domain.compare.pipelines.build_model"),
     format_text = require("core.domain.compare.pipelines.format_text"),
 }
 
-local Controller = {}
+local Controller    = {}
 
 ----------------------------------------------------------------
 -- Contracts
@@ -49,6 +49,18 @@ Controller.CONTRACT = {
             result = true,
         },
     },
+
+    compare_single = {
+        in_ = {
+            order_board = true,
+            sources     = true,
+            opts        = false,
+        },
+        out = {
+            result = true,
+            model  = true,
+        },
+    },
 }
 
 ----------------------------------------------------------------
@@ -61,14 +73,14 @@ local function resolve_bf_price(board)
     end
 
     if type(board.ea_price) == "number"
-    and type(board.bf_ea) == "number"
-    and board.bf_ea > 0 then
+        and type(board.bf_ea) == "number"
+        and board.bf_ea > 0 then
         return board.ea_price / board.bf_ea
     end
 
     if type(board.batch_price) == "number"
-    and type(board.bf_batch) == "number"
-    and board.bf_batch > 0 then
+        and type(board.bf_batch) == "number"
+        and board.bf_batch > 0 then
         return board.batch_price / board.bf_batch
     end
 
@@ -99,7 +111,7 @@ function Controller.build_input(bundle, vendor_boards, opts)
 
     Contract.assert(out, Controller.CONTRACT.build_input.out)
     Trace.contract_out(Controller.CONTRACT.build_input.out)
-    Trace.contract_leave("core.domain.compare.controller.build_input")
+    Trace.contract_leave()
 
     return out
 end
@@ -130,7 +142,7 @@ function Controller.run(input)
 
     Contract.assert(out, Controller.CONTRACT.run.out)
     Trace.contract_out(Controller.CONTRACT.run.out)
-    Trace.contract_leave("core.domain.comparea.controller.run")
+    Trace.contract_leave()
 
     return out
 end
@@ -154,7 +166,7 @@ function Controller.format_text(model, opts)
 
     Contract.assert(out, Controller.CONTRACT.format_text.out)
     Trace.contract_out(Controller.CONTRACT.format_text.out)
-    Trace.contract_leave("core.domain.compare.controller.format_text")
+    Trace.contract_leave()
 
     return out
 end
@@ -168,15 +180,55 @@ function Controller.compare(bundle, vendor_boards, opts)
     local model_res  = Controller.run(input_res.input)
     local format_res = Controller.format_text(model_res.model, opts)
 
-    local out = {
+    local out        = {
         result = format_res.result,
         model  = model_res.model,
     }
 
-    Trace.contract_leave("core.domain.compare.controller.compare")
+    Trace.contract_leave()
     return out
 end
 
 ----------------------------------------------------------------
+---
+function Controller.compare_single(order_board, sources, opts)
+    Trace.contract_enter("core.domain.compare.controller.compare_single")
+    Trace.contract_in(Controller.CONTRACT.compare_single.in_)
+
+    Contract.assert(
+        { order_board = order_board, sources = sources, opts = opts },
+        Controller.CONTRACT.compare_single.in_
+    )
+
+    ------------------------------------------------------------
+    -- Build Minimal Input Envelope
+    ------------------------------------------------------------
+
+    local input =
+        Registry.input_single.from_single(order_board, sources)
+
+    local ok, err = Registry.shape.validate_input(input)
+    if not ok then
+        error("[compare.controller] invalid single input: " .. tostring(err), 2)
+    end
+
+    ------------------------------------------------------------
+    -- Reuse existing pipeline
+    ------------------------------------------------------------
+
+    local model = Pipelines.build_model.run(input)
+
+    local formatted = Pipelines.format_text.run(model, opts)
+
+    local out = {
+        result = formatted,
+        model  = model,
+    }
+
+    Trace.contract_out(Controller.CONTRACT.compare_single.out)
+    Trace.contract_leave()
+
+    return out
+end
 
 return Controller

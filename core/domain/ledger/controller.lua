@@ -1,218 +1,177 @@
-local Trace         = require("tools.trace.trace")
-local Contract      = require("core.contract")
+local Trace    = require("tools.trace.trace")
+local Contract = require("core.contract")
 
-local Registry      = require("core.domain.ledger.registry")
-local FromIngest    = require("core.domain.ledger.pipelines.from_ingest")
+local Registry = require("core.domain.ledger.registry")
 
-local Controller    = {}
+local Controller = {}
+
+----------------------------------------------------------------
+-- CONTRACT
+----------------------------------------------------------------
 
 Controller.CONTRACT = {
-    from_ingest = {
-        in_ = { input = true, opts = false },
-        out = { transactions = true },
-    },
-
-    read_all = {
-        in_ = {},
-        out = { transactions = true },
-    },
-
-    read_one = {
-        in_ = { transaction_id = true },
-        out = { transaction = false },
-    },
-    read_all_full = {
-        in_ = {},
-        out = { transactions = true },
+    commit = {
+        in_  = { runtime = true, opts = false },
+        out  = { transactions = true },
     },
 }
 
-------------------------------------------------------------
--- CREATE (IDEMPOTENT)
-------------------------------------------------------------
+----------------------------------------------------------------
+-- COMMIT FROM RUNTIME
+----------------------------------------------------------------
 
-function Controller.from_ingest(input, opts)
-    Trace.contract_enter("core.domain.ledger.controller.from_ingest")
-    Trace.contract_in({ input = input, opts = opts })
-
-    Contract.assert(
-        { input = input, opts = opts },
-        Controller.CONTRACT.from_ingest.in_
-    )
+---@param runtime RuntimeView
+---@param opts table|nil
+function Controller.commit(runtime, opts)
+    Trace.contract_enter("core.domain.ledger.controller.commit")
+    Trace.contract_in({ runtime = runtime, opts = opts })
 
     opts = opts or {}
 
     ------------------------------------------------------------
-    -- Normalize to batches
+    -- Enforce Runtime Boundary
     ------------------------------------------------------------
 
-    local batches = input.data or input
-    if batches.order then
-        batches = { batches }
-    end
+    assert(
+        type(runtime) == "table"
+        and type(runtime.batches) == "function",
+        "[ledger] expected RuntimeView"
+    )
 
-    local attempted = #batches
-    local skipped   = 0
-    local added     = 0
-    local results   = {}
-
-    print("\n[ledger] BEGIN INGEST")
-    print(string.format(
-        "[ledger] batches=%d | force=%s",
-        attempted,
-        tostring(opts.force or false)
-    ))
+    local batches = runtime:batches()
+    assert(#batches > 0, "[ledger] runtime has no batches")
 
     ------------------------------------------------------------
-    -- Deterministic Identity + Idempotency
+    -- Policy: only commit order-category batches
     ------------------------------------------------------------
 
-    for i, batch in ipairs(batches) do
-        local txn_id      =
-            Registry.identity.from_batch(batch)
+    local eligible = {}
 
-        local board_count = #(batch.boards or {})
-        local value       = batch.order.value or 0
-
-        print(string.format(
-            "[ledger] [%02d/%02d] CHECK txn_id=%s | order_number=%s | date=%s | type=%s | boards=%d | value=%s",
-            i,
-            attempted,
-            tostring(txn_id),
-            tostring(batch.order.order_number),
-            tostring(batch.order.date),
-            tostring(batch.order.use),
-            board_count,
-            tostring(value)
-        ))
-
-        local existing =
-            Registry.ledger.read_one(txn_id)
-
-        if existing and not opts.force then
-            skipped = skipped + 1
-
-            print(string.format(
-                "[ledger]      SKIP -> existing_txn=%s",
-                tostring(existing.transaction_id)
-            ))
-
-            results[#results + 1] = existing
-        else
-            local out =
-                require("core.domain.ledger.pipelines.from_ingest")
-                .run({ batch }, opts)
-
-            added = added + 1
-
-            print(string.format(
-                "[ledger]      ADD  -> new_txn=%s",
-                tostring(out.transactions[1].transaction_id)
-            ))
-
-            results[#results + 1] = out.transactions[1]
+    for _, batch in ipairs(batches) do
+        local category = batch.meta and batch.meta.category
+        if category == "order" then
+            eligible[#eligible + 1] = batch
         end
     end
 
-    ------------------------------------------------------------
-    -- Final Ledger Count
-    ------------------------------------------------------------
-
-    local total =
-        #Registry.ledger.read_all()
+    if #eligible == 0 then
+        error("[ledger] no eligible order batches found", 2)
+    end
 
     ------------------------------------------------------------
-    -- Reporting
+    -- Commit
     ------------------------------------------------------------
 
+    local results = {}
+
+    print("\n[ledger] BEGIN COMMIT")
     print(string.format(
-        "\n[ledger] SUMMARY attempted=%d | added=%d | skipped=%d | total=%d",
-        attempted,
-        added,
-        skipped,
-        total
+        "[ledger] eligible_batches=%d | force=%s",
+        #eligible,
+        tostring(opts.force or false)
     ))
+
+    for i, batch in ipairs(eligible) do
+
+        local txn_id = Registry.identity.from_batch(batch)
+
+        print(string.format(
+            "[ledger] [%02d/%02d] txn_id=%s | order_number=%s | boards=%d",
+            i,
+            #eligible,
+            txn_id,
+            tostring(batch.order.order_number),
+            #(batch.boards or {})
+        ))
+
+        local existing = Registry.ledger.read_one(txn_id)
+
+        if existing and not opts.force then
+            results[#results + 1] = existing
+        else
+            local entry = Registry.build.run({
+                transaction_id = txn_id,
+                type           = batch.order.use or "sale",
+                date           = batch.order.date,
+                order_id       = batch.order.order_id,
+                customer_id    = batch.order.customer_id,
+                value          = batch.order.value or 0,
+                total_bf       = batch.order.bf_batch or 0,
+            })
+
+            Registry.storage.write_bundle(
+                txn_id,
+                entry,
+                batch.order,
+                batch.boards
+            )
+
+            Registry.ledger.append(entry)
+
+            results[#results + 1] = entry
+        end
+    end
+
+    print("[ledger] COMPLETE\n")
 
     local out = { transactions = results }
 
-    Trace.contract_out(out, "ledger.controller", "caller")
+    Trace.contract_out(out, "ledger.commit", "caller")
     Trace.contract_leave()
 
     return out
 end
 
-------------------------------------------------------------
--- READ ALL
-------------------------------------------------------------
+----------------------------------------------------------------
+-- READ
+----------------------------------------------------------------
 
 function Controller.read_all()
-    Trace.contract_enter("core.domain.ledger.controller.read_all")
-
-    local data = Registry.ledger.read_all()
-
-    local out = { transactions = data }
-
-    Trace.contract_out(out, "ledger.read_all", "caller")
-    Trace.contract_leave()
-
-    return out
+    return { transactions = Registry.ledger.read_all() }
 end
 
-------------------------------------------------------------
--- READ ONE
-------------------------------------------------------------
-
 function Controller.read_one(transaction_id)
-    Trace.contract_enter("core.domain.ledger.controller.read_one")
-    Trace.contract_in({ transaction_id = transaction_id })
-
-    Contract.assert(
-        { transaction_id = transaction_id },
-        Controller.CONTRACT.read_one.in_
-    )
-
-    local entry =
-        Registry.ledger.read_one(transaction_id)
-
-    local out = { transaction = entry }
-
-    Trace.contract_out(out, "ledger.read_one", "caller")
-    Trace.contract_leave()
-
-    return out
+    return { transaction = Registry.ledger.read_one(transaction_id) }
 end
 
 function Controller.read_bundle(transaction_id)
-    Trace.contract_enter("core.domain.ledger.controller.read_bundle")
-    Trace.contract_in({ transaction_id = transaction_id })
-
-    Contract.assert(
-        { transaction_id = transaction_id },
-        { transaction_id = true }
-    )
-
-    local bundle =
-        Registry.storage.read_bundle(transaction_id)
-
-    Trace.contract_out(bundle, "ledger.read_bundle", "caller")
-    Trace.contract_leave()
-
-    return bundle
+    return Registry.storage.read_bundle(transaction_id)
 end
 
-------------------------------------------------------------
--- READ ALL (FULL REHYDRATION)
-------------------------------------------------------------
+----------------------------------------------------------------
+-- INDEX VIEW (SUMMARY)
+----------------------------------------------------------------
 
-function Controller.read_all_full()
-    Trace.contract_enter("core.domain.ledger.controller.read_all_full")
+function Controller.index()
+    local transactions = Registry.ledger.read_all()
 
-    local index = Registry.ledger.read_all()
+    local out = {}
+
+    for _, txn in ipairs(transactions) do
+        out[#out + 1] = {
+            transaction_id = txn.transaction_id,
+            date           = txn.date,
+            type           = txn.type,
+            order_id       = txn.order_id,
+            customer_id    = txn.customer_id,
+            total_bf       = txn.total_bf,
+            value          = txn.value,
+        }
+    end
+
+    return { transactions = out }
+end
+
+----------------------------------------------------------------
+-- FULL REHYDRATED VIEW
+----------------------------------------------------------------
+
+function Controller.index_full()
+    local transactions = Registry.ledger.read_all()
     local hydrated = {}
 
-    for _, entry in ipairs(index) do
-        local bundle =
-            Registry.storage.read_bundle(entry.transaction_id)
+    for _, txn in ipairs(transactions) do
+        local bundle = Registry.storage.read_bundle(txn.transaction_id)
 
         hydrated[#hydrated + 1] = {
             entry  = bundle.entry,
@@ -221,37 +180,16 @@ function Controller.read_all_full()
         }
     end
 
-    local out = { transactions = hydrated }
-
-    Trace.contract_out(out, "ledger.read_all_full", "caller")
-    Trace.contract_leave()
-
-    return out
+    return { transactions = hydrated }
 end
 
-------------------------------------------------------------
--- ANALYTICS (FULL REPORT)
-------------------------------------------------------------
+----------------------------------------------------------------
+-- ANALYTICS
+----------------------------------------------------------------
 
-function Controller.analytics_full_report()
-    Trace.contract_enter("core.domain.ledger.controller.analytics_full_report")
-
-    local result =
-        require("core.domain.ledger.internal.analytics")
-        .full_report()
-
-    Trace.contract_out(result, "ledger.analytics_full_report", "caller")
-    Trace.contract_leave()
-
-    return result
+function Controller.analytics()
+    return require("core.domain.ledger.internal.analytics").full_report()
 end
 
-function Controller.print_report()
-    local report = require("core.domain.ledger.internal.analytics")
-        .full_report()
-
-    require("core.domain.ledger.internal.analytics_printer")
-        .print_full(report)
-end
 
 return Controller

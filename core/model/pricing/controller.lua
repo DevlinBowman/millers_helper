@@ -15,9 +15,9 @@ Controller.CONTRACT = {
     suggest = {
         in_  = {
             boards        = true,
-            cost_surface  = true,  -- from allocations.cost_surface().surface
+            cost_surface  = true,
             profile       = true,
-            ["matches?"]  = true,  -- optional retail match bundle
+            ["matches?"]  = true,
             ["opts?"]     = true,
         },
         out  = { suggestion = true },
@@ -45,7 +45,7 @@ function Controller.build_profile(profile_id)
         local preset = Registry.presets[profile_id]
         assert(preset, "unknown pricing profile: " .. profile_id)
 
-        local resolved = Registry.resolve.run(preset, Registry.presets)
+        local resolved   = Registry.resolve.run(preset, Registry.presets)
         local normalized = Registry.schema.normalize_profile(resolved)
 
         Registry.validate.run(normalized, Registry.schema)
@@ -69,7 +69,13 @@ end
 function Controller.suggest(boards, cost_surface, profile, matches, opts)
 
     Trace.contract_enter("core.model.pricing.controller.suggest")
-    Trace.contract_in({ boards = boards, cost_surface = cost_surface, profile = profile, matches = matches, opts = opts })
+    Trace.contract_in({
+        boards = boards,
+        cost_surface = cost_surface,
+        profile = profile,
+        matches = matches,
+        opts = opts,
+    })
 
     local function run()
         assert(type(boards) == "table", "Pricing.suggest(): boards table required")

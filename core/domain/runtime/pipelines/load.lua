@@ -20,7 +20,6 @@
 -- No envelope leakage.
 
 local Ingest  = require("pipelines.ingestion.ingest")
-local Bundle  = require("pipelines.ingestion.context_bundle")
 local Ledger  = require("core.domain.ledger.controller")
 local Storage = require("core.domain.ledger.internal.storage")
 local IO      = require('io.controller')
@@ -95,23 +94,6 @@ local function route(input)
         env, err = Ingest.read(input.path, input.opts)
     end
 
-    ------------------------------------------------------------
-    -- Two file bundle
-    ------------------------------------------------------------
-    if not env and type(input) == "table"
-        and input.order_path
-        and input.boards_path
-    then
-        print("[load] route: two-file bundle")
-        print("[load]   order_path  -> " .. tostring(input.order_path))
-        print("[load]   boards_path -> " .. tostring(input.boards_path))
-
-        env, err = Bundle.load(
-            input.order_path,
-            input.boards_path,
-            input.opts
-        )
-    end
 
     ------------------------------------------------------------
     -- Ledger index file (.lua source)
@@ -191,7 +173,28 @@ function LoadPipeline.run(input)
     print("\n[load] BEGIN")
 
     local env = route(input)
+
+    -- Capture provenance BEFORE normalize unwraps env.data
+    local io_meta = nil
+    if type(env) == "table"
+        and type(env.meta) == "table"
+        and type(env.meta.io) == "table"
+    then
+        io_meta = env.meta.io
+    end
+
     local batches = normalize(env)
+
+    -- Attach provenance to every canonical batch (do not overwrite existing)
+    if io_meta then
+        for i = 1, #batches do
+            local batch = batches[i]
+            batch.meta = batch.meta or {}
+            if batch.meta.io == nil then
+                batch.meta.io = io_meta
+            end
+        end
+    end
 
     print(string.format(
         "[load] COMPLETE -> %d batch(es) ready",

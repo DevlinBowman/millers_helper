@@ -9,6 +9,7 @@ Registry.shape   = require("core.domain.compare.internal.shape")
 Registry.input   = require("core.domain.compare.internal.input")
 Registry.model   = require("core.domain.compare.internal.model")
 Registry.matcher = require("core.domain.compare.internal.matcher")
+Registry.input_single = require("core.domain.compare.internal.input_single")
 
 Registry.formats = {
     layout = require("core.domain.compare.internal.formats.layout"),
