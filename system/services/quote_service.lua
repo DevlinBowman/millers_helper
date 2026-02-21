@@ -1,10 +1,11 @@
-local RuntimeDomain = require("core.domain.runtime.controller")
-local QuoteDomain   = require("core.domain.quote.controller")
+-- system/services/quote_service.lua
 
-local Storage       = require("system.infrastructure.storage.controller")
-local FileGateway   = require("system.infrastructure.file_gateway")
+local QuoteDomain  = require("core.domain.quote.controller")
 
-local QuoteService  = {}
+local Storage      = require("system.infrastructure.storage.controller")
+local FileGateway  = require("system.infrastructure.file_gateway")
+
+local QuoteService = {}
 
 function QuoteService.handle(req)
 
@@ -13,23 +14,28 @@ function QuoteService.handle(req)
         return { ok = false, error = "missing state" }
     end
 
-    local order_path =
-        state.resources
-        and state.resources.order_path
-
-    if not order_path then
-        return { ok = false, error = "missing resource: order_path" }
+    if not state._hub then
+        return { ok = false, error = "runtime hub not initialized" }
     end
 
     ------------------------------------------------------------
-    -- Load runtime bundle
+    -- Require runtime via hub
     ------------------------------------------------------------
 
-    local runtime = RuntimeDomain.load(order_path)
-    local batch = runtime:batches()[1]
+    local runtime, err = state._hub:require("user")
+    if not runtime then
+        return { ok = false, error = err or "user runtime not available" }
+    end
 
-    if not batch then
-        return { ok = false, error = "no batch available" }
+    local batches = runtime:batches()
+    if not batches or #batches == 0 then
+        return { ok = false, error = "no batches available" }
+    end
+
+    local batch = batches[1]
+
+    if not batch.boards or #batch.boards == 0 then
+        return { ok = false, error = "quote requires boards" }
     end
 
     ------------------------------------------------------------
@@ -43,7 +49,7 @@ function QuoteService.handle(req)
     ------------------------------------------------------------
 
     local rendered = QuoteDomain.render_text(model)
-    local content = table.concat(rendered.lines, "\n")
+    local content  = table.concat(rendered.lines, "\n")
 
     ------------------------------------------------------------
     -- Optional print
@@ -56,7 +62,7 @@ function QuoteService.handle(req)
     end
 
     ------------------------------------------------------------
-    -- Export via Storage Schema
+    -- Optional export
     ------------------------------------------------------------
 
     if req.opts and req.opts.export == true then
@@ -64,29 +70,30 @@ function QuoteService.handle(req)
         local doc_path  = Storage.export_doc("quotes", model.id)
         local meta_path = Storage.export_meta("quotes", model.id)
 
-        local meta, err = FileGateway.write(doc_path, "raw", content)
+        local meta, write_err =
+            FileGateway.write(doc_path, "raw", content)
+
         if not meta then
-            return { ok = false, error = err }
+            return { ok = false, error = write_err }
         end
 
         local export_meta = {
-            document_id = model.id,
-            type        = "quote",
-            source_path = order_path,
-            totals      = model.totals,
+            document_id  = model.id,
+            type         = "quote",
+            totals       = model.totals,
             generated_at = os.date("%Y-%m-%d %H:%M:%S"),
         }
 
-        local meta2, err2 =
+        local meta2, write_err2 =
             FileGateway.write(meta_path, "json", export_meta)
 
         if not meta2 then
-            return { ok = false, error = err2 }
+            return { ok = false, error = write_err2 }
         end
     end
 
     ------------------------------------------------------------
-    -- Update state
+    -- Update state (ephemeral)
     ------------------------------------------------------------
 
     state.results = state.results or {}
