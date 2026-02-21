@@ -1,5 +1,5 @@
-local IO     = require("io.controller")
-local Format = require("format.controller")
+local IO     = require("platform.io.controller")
+local Format = require("platform.format.controller")
 local Trace  = require("tools.trace.trace")
 
 Trace.set(false)

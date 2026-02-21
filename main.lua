@@ -1,54 +1,32 @@
 print('running main.lua')
 local I           = require("inspector")
 local Trace       = require("tools.trace.trace")
-local Ingest      = require("pipelines.ingestion.ingest")
-local Bundle = require('pipelines.ingestion.context_bundle')
-local Export      = require("pipelines.export.export")
-
-local Ledger      = require("core.domain.ledger.controller")
-local Printer = require("core.domain.ledger.internal.analytics_printer")
-
 local Diagnostic  = require("tools.diagnostic")
 local ConsoleSink = require("tools.diagnostic.sinks.console")
 
-local Load = require("core.domain.runtime.pipelines.load")
+local Load = require("core.domain.runtime.controller")
 
--- Diagnostic.add_sink(ConsoleSink.new({
---     print_debug = true,
---     min_signal_severity = "info",
--- }))
+local Persistence = require("system.app.persistence")
+local Backend     = require("system.backend")
+local CompareSvc  = require("system.services.compare_service")
 
--- Trace.set(true)
-Trace.set_mode("collapse")
-Trace.set_shape_mode("runtime")
-Trace.set_shape_depth(2)
+-- load state from disk
+local state = Persistence.load()
 
--- local boards_path = "/Users/ven/Desktop/2026-lumber-app-v3/data/test_inputs/input_short.txt"
--- local order_path  = "/Users/ven/Desktop/2026-lumber-app-v3/data/test_inputs/no_boards.txt"
--- local all_current = "/Users/ven/Desktop/2026-lumber-app-v3/data/test_inputs/compiled_lumber_orders.csv"
--- local tlcsv       = "/Users/ven/Desktop/2026-lumber-app-v3/data/test_inputs/test_lumber.csv"
+-- configure loadables
+state:set_loadable("order", "/Users/ven/Desktop/2026-lumber-app-v3/data/test_inputs/input.txt")
+state:set_loadable("vendor", "/Users/ven/Desktop/2026-lumber-app-v3/data/ref/retailer_lumber/home_depot.txt")
 
+-- execute request
+local out = Backend.execute(state, CompareSvc, {})
 
-local boards_path = "/Users/ven/Desktop/2026-lumber-app-v3/data/test_inputs/input.txt"
-local order_path  = "/Users/ven/Desktop/2026-lumber-app-v3/data/test_inputs/no_boards.txt"
-local all_current = "/Users/ven/Desktop/2026-lumber-app-v3/data/test_inputs/compiled_lumber_orders.csv"
-local tlcsv       = "/Users/ven/Desktop/2026-lumber-app-v3/data/test_inputs/test_lumber.csv"
+if not out.ok then
+  print("ERROR:", out.error)
+else
+  for _, line in ipairs((out.result.result or {}).lines or {}) do
+    print(line)
+  end
+end
 
--- --
--- -- local PathMap = require("tools.struct.path_map")
--- --
--- -- local result = Ingest.read(boards_path)
--- -- PathMap.print(result)
--- --
--- -- local bundle = Bundle.load(order_path, boards_path)
--- -- PathMap.print(bundle)
--- --
--- -- local ledger = Ledger.read_all_full()
--- -- PathMap.print(ledger)
--- -- --
---
--- local Struct = require('tools.struct')
--- Struct.print_all()
---
-local data = Load.run(boards_path)
-I.print(data)
+-- persist for next session
+Persistence.save(state)

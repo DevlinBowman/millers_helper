@@ -1,70 +1,45 @@
--- services/compare_service.lua
---
--- Application service for compare.
--- Stateless. No IO. No file loading.
--- Wraps core.domain.compare.controller.
+-- system/services/compare_service.lua
 
-local CompareController = require("core.domain.compare.controller")
+local RuntimeDomain = require("core.domain.runtime.controller")
+local CompareDomain = require("core.domain.compare.controller")
 
 local CompareService = {}
 
-----------------------------------------------------------------
--- validate_request
-----------------------------------------------------------------
+function CompareService.handle(req)
 
-local function validate_request(req)
-  if type(req) ~= "table" then
-    return false, "request must be table"
+  local state = req.state
+  if not state then
+    return { ok = false, error = "missing state" }
   end
 
-  if type(req.bundle) ~= "table" then
-    return false, "request.bundle required"
+  local order_path  = state:get_loadable("order")
+  local vendor_path = state:get_loadable("vendor")
+
+  if not order_path then
+    return { ok = false, error = "missing loadable: order" }
   end
 
-  if type(req.sources) ~= "table" then
-    return false, "request.sources required"
+  if not vendor_path then
+    return { ok = false, error = "missing loadable: vendor" }
   end
 
-  return true
-end
+  local order_runtime  = RuntimeDomain.load(order_path)
+  local vendor_runtime = RuntimeDomain.load(vendor_path)
 
-----------------------------------------------------------------
--- handle
-----------------------------------------------------------------
+  local order_bundle  = order_runtime:batches()[1]
+  local vendor_bundle = vendor_runtime:batches()[1]
 
-function CompareService.handle(request)
-
-  local ok, err = validate_request(request)
-  if not ok then
-    return {
-      ok    = false,
-      error = "[compare_service] " .. err,
-    }
-  end
-
-  local bundle  = request.bundle
-  local sources = request.sources
-  local opts    = request.opts or {}
-
-  local success, result_or_err = pcall(function()
-
-    local controller_out =
-      CompareController.compare(bundle, sources, opts)
-
-    return controller_out
-  end)
-
-  if not success then
-    return {
-      ok    = false,
-      error = "[compare_service] " .. tostring(result_or_err),
-    }
-  end
+  local result = CompareDomain.compare(
+    order_bundle,
+    {
+      { name = vendor_path, boards = vendor_bundle.boards }
+    },
+    {}
+  )
 
   return {
     ok     = true,
-    result = result_or_err.result,
-    model  = result_or_err.model,
+    result = result
   }
 end
 

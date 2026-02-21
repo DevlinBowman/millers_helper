@@ -1,4 +1,4 @@
-local FS = require("io.registry").fs
+local FS = require("platform.io.registry").fs
 
 local Attachments = {}
 

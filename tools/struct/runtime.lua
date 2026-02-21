@@ -10,7 +10,7 @@ local M = {}
 
 local TARGETS = {
     ingest = function(path)
-        local Ingest = require("pipelines.ingestion.ingest")
+        local Ingest = require("platform.pipelines.ingestion.ingest")
 
         local result = Ingest.read(path)
 

@@ -1,5 +1,5 @@
-local IO = require("io.controller")
-local FS = require("io.registry").fs
+local IO = require("platform.io.controller")
+local FS = require("platform.io.registry").fs
 
 local Ledger = {}
 

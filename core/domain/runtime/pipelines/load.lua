@@ -19,10 +19,10 @@
 -- Output is ALWAYS canonical batches.
 -- No envelope leakage.
 
-local Ingest  = require("pipelines.ingestion.ingest")
+local Ingest  = require("platform.pipelines.ingestion.ingest")
 local Ledger  = require("core.domain.ledger.controller")
 local Storage = require("core.domain.ledger.internal.storage")
-local IO      = require('io.controller')
+local IO      = require('platform.io.controller')
 
 ----------------------------------------------------------------
 -- Utility: identify canonical batch shape
