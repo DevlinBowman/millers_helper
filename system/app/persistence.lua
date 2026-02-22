@@ -11,7 +11,6 @@ local Persistence = {}
 ------------------------------------------------------------
 
 function Persistence.load(opts)
-
     opts = opts or {}
 
     local path = opts.file or Storage.session_file("last_session")
@@ -24,7 +23,7 @@ function Persistence.load(opts)
 
     return State.new({
         context   = data.context,
-        loadables = data.loadables,
+        resources = data.resources,
         results   = {},
     })
 end
@@ -34,7 +33,6 @@ end
 ------------------------------------------------------------
 
 function Persistence.save(state, opts)
-
     opts = opts or {}
 
     local path = opts.file or Storage.session_file("last_session")
@@ -42,7 +40,7 @@ function Persistence.save(state, opts)
     local payload = {
         version   = 1,
         context   = state.context,
-        loadables = state.loadables,
+        resources = state.resources,
     }
 
     local ok, err = FileGateway.write_json(path, payload)

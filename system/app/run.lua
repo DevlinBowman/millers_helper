@@ -35,7 +35,7 @@ function Run.start(opts)
     -- 4. Create Runtime Hub
     ------------------------------------------------------------
 
-    local hub = RuntimeHub.new(state.loadables)
+    local hub = RuntimeHub.new(state.resources)
 
     return {
         state = state,

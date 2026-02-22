@@ -1,28 +1,39 @@
 -- system/services/quote_service.lua
+--
+-- Quote service.
+-- Resolves runtime exclusively via RuntimeHub.
+-- No direct state.runtime coupling.
 
-local QuoteDomain  = require("core.domain.quote.controller")
+local QuoteDomain = require("core.domain.quote.controller")
 
-local Storage      = require("system.infrastructure.storage.controller")
-local FileGateway  = require("system.infrastructure.file_gateway")
+local Storage     = require("system.infrastructure.storage.controller")
+local FileGateway = require("system.infrastructure.file_gateway")
 
 local QuoteService = {}
 
 function QuoteService.handle(req)
 
+    if not req or type(req) ~= "table" then
+        return { ok = false, error = "invalid request" }
+    end
+
     local state = req.state
+    local hub   = req.hub
+    local opts  = req.opts or {}
+
     if not state then
         return { ok = false, error = "missing state" }
     end
 
-    if not state._hub then
-        return { ok = false, error = "runtime hub not initialized" }
+    if not hub then
+        return { ok = false, error = "missing runtime hub" }
     end
 
     ------------------------------------------------------------
-    -- Require runtime via hub
+    -- Resolve USER runtime
     ------------------------------------------------------------
 
-    local runtime, err = state._hub:require("user")
+    local runtime, err = hub:require("user")
     if not runtime then
         return { ok = false, error = err or "user runtime not available" }
     end
@@ -55,7 +66,7 @@ function QuoteService.handle(req)
     -- Optional print
     ------------------------------------------------------------
 
-    if not (req.opts and req.opts.print == false) then
+    if opts.print ~= false then
         for _, line in ipairs(rendered.lines) do
             print(line)
         end
@@ -65,7 +76,7 @@ function QuoteService.handle(req)
     -- Optional export
     ------------------------------------------------------------
 
-    if req.opts and req.opts.export == true then
+    if opts.export == true then
 
         local doc_path  = Storage.export_doc("quotes", model.id)
         local meta_path = Storage.export_meta("quotes", model.id)
@@ -93,11 +104,10 @@ function QuoteService.handle(req)
     end
 
     ------------------------------------------------------------
-    -- Update state (ephemeral)
+    -- Store result (ephemeral)
     ------------------------------------------------------------
 
-    state.results = state.results or {}
-    state.results.quote = model
+    state:set_result("quote", model)
 
     return { ok = true, model = model }
 end

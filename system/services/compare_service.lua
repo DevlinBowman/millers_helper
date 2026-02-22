@@ -1,87 +1,72 @@
-local RuntimeDomain = require("core.domain.runtime.controller")
+-- system/services/compare_service.lua
+--
+-- Compare service.
+-- Resolves runtimes exclusively via RuntimeHub.
+-- No direct domain loading.
+-- No direct state.resource access.
+
 local CompareDomain = require("core.domain.compare.controller")
 
-local Storage       = require("system.infrastructure.storage.controller")
-local FileGateway   = require("system.infrastructure.file_gateway")
+local Storage     = require("system.infrastructure.storage.controller")
+local FileGateway = require("system.infrastructure.file_gateway")
 
 local CompareService = {}
 
 function CompareService.handle(req)
 
+    if not req or type(req) ~= "table" then
+        return { ok = false, error = "invalid request" }
+    end
+
     local state = req.state
+    local hub   = req.hub
+    local opts  = req.opts or {}
+
     if not state then
         return { ok = false, error = "missing state" }
     end
 
-    ------------------------------------------------------------
-    -- Resolve order path
-    ------------------------------------------------------------
-
-    local order_path =
-        state.resources
-        and state.resources.order_path
-
-    if not order_path then
-        return { ok = false, error = "missing resource: order_path" }
+    if not hub then
+        return { ok = false, error = "missing runtime hub" }
     end
 
     ------------------------------------------------------------
-    -- Resolve vendor paths
+    -- Resolve USER runtime
     ------------------------------------------------------------
 
-    local vendor_paths =
-        state.resources
-        and state.resources.vendor_paths
-
-    -- Default to vendor cache if not explicitly set
-    if not vendor_paths or #vendor_paths == 0 then
-
-        local cache_root = Storage.vendor_cache_root()
-
-        -- read cache directory listing via gateway
-        local files, err = FileGateway.list(cache_root)
-
-        if not files or #files == 0 then
-            return {
-                ok = false,
-                error = "no vendor_paths and vendor cache empty"
-            }
-        end
-
-        vendor_paths = {}
-        for _, f in ipairs(files) do
-            table.insert(vendor_paths, cache_root .. "/" .. f)
-        end
+    local user_runtime, err = hub:require("user")
+    if not user_runtime then
+        return { ok = false, error = err or "user runtime not available" }
     end
 
-    ------------------------------------------------------------
-    -- Load order runtime
-    ------------------------------------------------------------
-
-    local order_runtime = RuntimeDomain.load(order_path)
-    local order_bundle  = order_runtime:batches()[1]
-
-    if not order_bundle then
-        return { ok = false, error = "no order batch available" }
+    local user_batches = user_runtime:batches()
+    if not user_batches or #user_batches == 0 then
+        return { ok = false, error = "no user batch available" }
     end
 
+    local order_bundle = user_batches[1]
+
     ------------------------------------------------------------
-    -- Load vendor runtimes
+    -- Resolve VENDOR runtime
     ------------------------------------------------------------
+
+    local vendor_runtime, err2 = hub:require("vendors")
+    if not vendor_runtime then
+        return { ok = false, error = err2 or "vendor runtime not available" }
+    end
+
+    local vendor_batches = vendor_runtime:batches()
+    if not vendor_batches or #vendor_batches == 0 then
+        return { ok = false, error = "no vendor batches available" }
+    end
 
     local sources = {}
 
-    for _, vpath in ipairs(vendor_paths) do
-
-        local v_runtime = RuntimeDomain.load(vpath)
-        local v_bundle  = v_runtime:batches()[1]
-
-        if v_bundle then
-            table.insert(sources, {
-                name   = vpath,
-                boards = v_bundle.boards or {},
-            })
-        end
+    for i, batch in ipairs(vendor_batches) do
+        sources[#sources + 1] = {
+            name   = "vendor-" .. tostring(i),
+            boards = batch.boards or {},
+        }
     end
 
     if #sources == 0 then
@@ -96,43 +81,28 @@ function CompareService.handle(req)
         CompareDomain.compare(order_bundle, sources, {})
 
     ------------------------------------------------------------
-    -- Store result in state
+    -- Store result (ephemeral)
     ------------------------------------------------------------
 
-    state.results = state.results or {}
-    state.results.compare = result
+    state:set_result("compare", result)
 
     ------------------------------------------------------------
     -- Optional export
     ------------------------------------------------------------
 
-    if req.opts and req.opts.export == true then
+    if opts.export == true then
 
-        local compare_id =
-            "COMPARE-" .. os.time()
+        local compare_id = "COMPARE-" .. os.time()
 
-        local doc_path =
-            Storage.export_doc("compare", compare_id)
+        local doc_path  = Storage.export_doc("compare", compare_id)
+        local meta_path = Storage.export_meta("compare", compare_id)
 
-        local meta_path =
-            Storage.export_meta("compare", compare_id)
+        FileGateway.write(doc_path, "json", result)
 
-        FileGateway.write(
-            doc_path,
-            "json",
-            result
-        )
-
-        FileGateway.write(
-            meta_path,
-            "json",
-            {
-                compare_id  = compare_id,
-                order_path  = order_path,
-                vendor_paths = vendor_paths,
-                generated_at = os.date("%Y-%m-%d %H:%M:%S"),
-            }
-        )
+        FileGateway.write(meta_path, "json", {
+            compare_id   = compare_id,
+            generated_at = os.date("%Y-%m-%d %H:%M:%S"),
+        })
     end
 
     return { ok = true, result = result }

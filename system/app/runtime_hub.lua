@@ -1,12 +1,12 @@
--- system/runtime_hub.lua
+-- system/app/runtime_hub.lua
 --
--- Master loader control panel.
--- Top-level access to runtime domain.
+-- Master runtime loader + composition layer.
 --
 -- Responsibilities:
---   • Store load specifications (persisted)
---   • Cache RuntimeView objects (non-persisted)
---   • Provide safe require() semantics
+--   • Store persisted runtime specifications
+--   • Lazily construct RuntimeView objects
+--   • Compose labeled inputs (orders + boards)
+--   • Cache runtime objects (non-persisted)
 --
 -- No CLI.
 -- No printing.
@@ -17,34 +17,40 @@ local RuntimeController = require("core.domain.runtime.controller")
 local RuntimeHub = {}
 RuntimeHub.__index = RuntimeHub
 
-------------------------------------------------------------
+----------------------------------------------------------------
 -- Constructor
-------------------------------------------------------------
+----------------------------------------------------------------
 
 function RuntimeHub.new(initial_specs)
     local self = setmetatable({}, RuntimeHub)
 
-    self._specs  = initial_specs or {}  -- persistable
-    self._cache  = {}                  -- runtime objects (not persisted)
+    -- Persisted resource specs (shared with State)
+    self._specs = initial_specs or {}
+
+    -- Ephemeral runtime cache
+    self._cache = {}
 
     return self
 end
 
-------------------------------------------------------------
+----------------------------------------------------------------
 -- Spec Management (Persisted)
-------------------------------------------------------------
+----------------------------------------------------------------
 
-function RuntimeHub:set(name, input, opts)
+function RuntimeHub:set(name, inputs, opts)
     if type(name) ~= "string" or name == "" then
         return false, "invalid name"
     end
 
+    if type(inputs) ~= "table" then
+        return false, "resource inputs must be table"
+    end
+
     self._specs[name] = {
-        input = input,
-        opts  = opts or {}
+        inputs = inputs,
+        opts   = opts or {}
     }
 
-    -- clear stale cache
     self._cache[name] = nil
 
     return true
@@ -63,36 +69,92 @@ function RuntimeHub:specs()
     return self._specs
 end
 
-------------------------------------------------------------
+----------------------------------------------------------------
+-- Internal Helpers
+----------------------------------------------------------------
+
+local function is_labeled_inputs(inputs)
+    return type(inputs) == "table"
+        and (inputs.orders ~= nil or inputs.boards ~= nil)
+end
+
+----------------------------------------------------------------
 -- Loading
-------------------------------------------------------------
+----------------------------------------------------------------
 
 function RuntimeHub:load(name)
-    local spec = self._specs[name]
 
+    local spec = self._specs[name]
     if not spec then
         return nil, "missing spec: " .. tostring(name)
     end
 
-    local runtime = RuntimeController.load(
-        spec.input,
-        spec.opts
-    )
+    local inputs = spec.inputs
+    local opts   = spec.opts or {}
 
-    self._cache[name] = runtime
+    if type(inputs) ~= "table" then
+        return nil, "resource inputs must be table"
+    end
 
-    return runtime
+    ------------------------------------------------------------
+    -- CASE 1: Simple input (no labels)
+    ------------------------------------------------------------
+
+    if not is_labeled_inputs(inputs) then
+        local runtime =
+            RuntimeController.load(inputs, opts)
+
+        self._cache[name] = runtime
+        return runtime
+    end
+
+    ------------------------------------------------------------
+    -- CASE 2: Labeled input (orders + boards)
+    ------------------------------------------------------------
+
+    local order_inputs = inputs.orders
+    local board_inputs = inputs.boards
+
+    if not order_inputs then
+        return nil, "labeled resource missing 'orders'"
+    end
+
+    if not board_inputs then
+        return nil, "labeled resource missing 'boards'"
+    end
+
+    local order_runtime =
+        RuntimeController.load(order_inputs, {
+            category = "order",
+            name     = name
+        })
+
+    local board_runtime =
+        RuntimeController.load(board_inputs, {
+            category = "board",
+            name     = name
+        })
+
+    local associated =
+        RuntimeController.associate(
+            order_runtime,
+            board_runtime,
+            { name = name }
+        )
+
+    self._cache[name] = associated
+
+    return associated
 end
 
-------------------------------------------------------------
+----------------------------------------------------------------
 -- Access (Lazy + Safe)
-------------------------------------------------------------
+----------------------------------------------------------------
 
 function RuntimeHub:get(name)
     if self._cache[name] then
         return self._cache[name]
     end
-
     return self:load(name)
 end
 
@@ -104,9 +166,9 @@ function RuntimeHub:require(name)
     return runtime
 end
 
-------------------------------------------------------------
+----------------------------------------------------------------
 -- Introspection
-------------------------------------------------------------
+----------------------------------------------------------------
 
 function RuntimeHub:is_loaded(name)
     return self._cache[name] ~= nil

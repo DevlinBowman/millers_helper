@@ -1,36 +1,50 @@
-local RuntimeDomain  = require("core.domain.runtime.controller")
-local InvoiceDomain  = require("core.domain.invoice.controller")
+-- system/services/invoice_service.lua
+--
+-- Invoice service.
+-- Resolves runtime exclusively via RuntimeHub.
+-- No direct RuntimeDomain usage.
+-- No direct state.resource inspection.
 
-local Storage        = require("system.infrastructure.storage.controller")
-local FileGateway    = require("system.infrastructure.file_gateway")
+local InvoiceDomain = require("core.domain.invoice.controller")
+
+local Storage     = require("system.infrastructure.storage.controller")
+local FileGateway = require("system.infrastructure.file_gateway")
 
 local InvoiceService = {}
 
 function InvoiceService.handle(req)
 
+    if not req or type(req) ~= "table" then
+        return { ok = false, error = "invalid request" }
+    end
+
     local state = req.state
+    local hub   = req.hub
+    local opts  = req.opts or {}
+
     if not state then
         return { ok = false, error = "missing state" }
     end
 
-    local order_path =
-        state.resources
-        and state.resources.order_path
-
-    if not order_path then
-        return { ok = false, error = "missing resource: order_path" }
+    if not hub then
+        return { ok = false, error = "missing runtime hub" }
     end
 
     ------------------------------------------------------------
-    -- Load runtime bundle
+    -- Resolve USER runtime
     ------------------------------------------------------------
 
-    local runtime = RuntimeDomain.load(order_path)
-    local batch   = runtime:batches()[1]
+    local runtime, err = hub:require("user")
+    if not runtime then
+        return { ok = false, error = err or "user runtime not available" }
+    end
 
-    if not batch then
+    local batches = runtime:batches()
+    if not batches or #batches == 0 then
         return { ok = false, error = "no batch available" }
     end
+
+    local batch = batches[1]
 
     if not batch.transaction_id then
         return { ok = false, error = "invoice requires transaction_id" }
@@ -53,17 +67,17 @@ function InvoiceService.handle(req)
     -- Optional print
     ------------------------------------------------------------
 
-    if not (req.opts and req.opts.print == false) then
+    if opts.print ~= false then
         for _, line in ipairs(rendered.lines) do
             print(line)
         end
     end
 
     ------------------------------------------------------------
-    -- Export via Storage Schema
+    -- Optional export
     ------------------------------------------------------------
 
-    if req.opts and req.opts.export == true then
+    if opts.export == true then
 
         local doc_path  = Storage.export_doc("invoices", model.id)
         local meta_path = Storage.export_meta("invoices", model.id)
@@ -72,11 +86,11 @@ function InvoiceService.handle(req)
         -- Write invoice text
         --------------------------------------------------------
 
-        local meta, err =
+        local meta, write_err =
             FileGateway.write(doc_path, "raw", content)
 
         if not meta then
-            return { ok = false, error = err }
+            return { ok = false, error = write_err }
         end
 
         --------------------------------------------------------
@@ -88,42 +102,41 @@ function InvoiceService.handle(req)
             type         = "invoice",
             txn_id       = batch.transaction_id,
             client_id    = batch.order and batch.order.client,
-            source_path  = order_path,
             totals       = model.totals,
             generated_at = os.date("%Y-%m-%d %H:%M:%S"),
         }
 
-        local meta2, err2 =
+        local meta2, write_err2 =
             FileGateway.write(meta_path, "json", export_meta)
 
         if not meta2 then
-            return { ok = false, error = err2 }
+            return { ok = false, error = write_err2 }
         end
 
         --------------------------------------------------------
         -- Optional: attach to ledger txn folder
         --------------------------------------------------------
 
-        if batch.transaction_id then
-            local txn_dir =
-                Storage.ledger_txn_dir(
-                    state.context and state.context.active_ledger or "main",
-                    batch.transaction_id
-                )
+        local ledger_id =
+            state:get_context("active_ledger") or "default"
 
-            local ledger_copy =
-                txn_dir .. "/attachments/" .. model.id .. ".txt"
+        local txn_dir =
+            Storage.ledger_txn_dir(
+                ledger_id,
+                batch.transaction_id
+            )
 
-            FileGateway.write(ledger_copy, "raw", content)
-        end
+        local ledger_copy =
+            txn_dir .. "/attachments/" .. model.id .. ".txt"
+
+        FileGateway.write(ledger_copy, "raw", content)
     end
 
     ------------------------------------------------------------
-    -- Update state
+    -- Store result (ephemeral)
     ------------------------------------------------------------
 
-    state.results = state.results or {}
-    state.results.invoice = model
+    state:set_result("invoice", model)
 
     return { ok = true, model = model }
 end
