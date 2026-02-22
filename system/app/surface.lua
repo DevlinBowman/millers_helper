@@ -1,15 +1,19 @@
 -- system/app/surface.lua
 --
--- Application boundary surface.
--- Owns:
---   • Persisted State
---   • RuntimeHub (ephemeral)
---   • Service orchestration
+-- Surface is the **application boundary object**.
 --
--- Does NOT:
---   • Load runtimes directly
+-- It is the ONLY object in the system that is allowed to:
+--   • Own persisted State
+--   • Own a RuntimeHub (ephemeral runtime layer)
+--   • Orchestrate services
+--
+-- It is NOT allowed to:
+--   • Load runtime objects directly
 --   • Perform domain logic
---   • Persist runtime objects
+--   • Perform filesystem IO directly
+--
+-- Think of Surface as:
+--   "Session-level façade over state + runtime + services"
 
 local Persistence = require("system.app.persistence")
 local RuntimeHub  = require("system.app.runtime_hub")
@@ -17,8 +21,11 @@ local RuntimeHub  = require("system.app.runtime_hub")
 local CompareSvc  = require("system.services.compare_service")
 local QuoteSvc    = require("system.services.quote_service")
 local InvoiceSvc  = require("system.services.invoice_service")
-local IngestSvc = require("system.services.ingest_service")
+local IngestSvc   = require("system.services.ingest_service")
 
+---@class Surface
+---@field state State                 -- Persisted + ephemeral session state
+---@field hub RuntimeHub              -- Ephemeral runtime resolver (lazy)
 local Surface = {}
 Surface.__index = Surface
 
@@ -26,16 +33,21 @@ Surface.__index = Surface
 -- Constructor
 ----------------------------------------------------------------
 
+---@param opts? table
+---@return Surface
 function Surface.new(opts)
     opts = opts or {}
 
+    -- Load persisted session state (context + resource specs)
     local state = Persistence.load(opts.persistence)
 
     local self = setmetatable({}, Surface)
 
     self.state = state
 
-    -- CRITICAL: bind directly to same table
+    -- CRITICAL:
+    -- RuntimeHub is bound directly to state.resources.
+    -- This means specs mutate in-place and are immediately visible.
     self.hub = RuntimeHub.new(self.state.resources)
 
     return self
@@ -44,7 +56,20 @@ end
 ----------------------------------------------------------------
 -- Resource Management (Persisted Specs)
 ----------------------------------------------------------------
+-- A "resource" is NOT a runtime.
+-- It is a persistable runtime specification:
+--
+--   resources[name] = {
+--       inputs = { ... },
+--       opts   = { ... }
+--   }
+--
+-- RuntimeHub resolves these lazily.
 
+---@param name string
+---@param input string|table
+---@param opts? table
+---@return boolean|string
 function Surface:set_resource(name, input, opts)
 
     local inputs
@@ -61,10 +86,14 @@ function Surface:set_resource(name, input, opts)
     })
 end
 
+---@param name string
+---@return table|nil
 function Surface:get_resource(name)
     return self.state:get_resource(name)
 end
 
+---@param name string
+---@return boolean|string
 function Surface:clear_resource(name)
     return self.state:clear_resource(name)
 end
@@ -72,7 +101,14 @@ end
 ----------------------------------------------------------------
 -- Services
 ----------------------------------------------------------------
+-- Services are pure orchestration units.
+-- They:
+--   • Resolve runtimes via hub
+--   • Call domain controllers
+--   • Store ephemeral results in state.results
 
+---@param opts? table
+---@return table
 function Surface:run_compare(opts)
     return CompareSvc.handle({
         state = self.state,
@@ -81,6 +117,8 @@ function Surface:run_compare(opts)
     })
 end
 
+---@param opts? table
+---@return table
 function Surface:run_quote(opts)
     return QuoteSvc.handle({
         state = self.state,
@@ -89,6 +127,8 @@ function Surface:run_quote(opts)
     })
 end
 
+---@param opts? table
+---@return table
 function Surface:run_invoice(opts)
     return InvoiceSvc.handle({
         state = self.state,
@@ -97,7 +137,10 @@ function Surface:run_invoice(opts)
     })
 end
 
+---@param opts table
+---@return table
 function Surface:run_ingest(opts)
+    -- Ingest is intentionally standalone and does not require state/hub.
     return IngestSvc.handle(opts)
 end
 
@@ -105,10 +148,13 @@ end
 -- Persistence
 ----------------------------------------------------------------
 
+---@param opts? table
+---@return boolean|string
 function Surface:save(opts)
     return Persistence.save(self.state, opts)
 end
 
+---@return State
 function Surface:get_state()
     return self.state
 end
@@ -116,7 +162,10 @@ end
 ----------------------------------------------------------------
 -- Status (Runtime Introspection)
 ----------------------------------------------------------------
+-- Provides a structured snapshot for UI.
+-- Does NOT mutate anything.
 
+---@return table
 function Surface:status()
 
     local hub   = self.hub
@@ -192,7 +241,10 @@ end
 ----------------------------------------------------------------
 -- Inspect (Full State Snapshot)
 ----------------------------------------------------------------
+-- Returns raw internal state tables.
+-- Intended for debugging / TUI inspection only.
 
+---@return table
 function Surface:inspect()
     return {
         context   = self.state:context_table(),

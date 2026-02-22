@@ -1,19 +1,40 @@
 -- system/app/runtime_hub.lua
 --
--- Master runtime loader + composition layer.
+-- RuntimeHub
+-- ==========
+--
+-- RuntimeHub is the system's runtime composition layer.
+--
+-- It sits between:
+--   • Persisted resource specifications (State.resources)
+--   • Domain runtime construction (core.domain.runtime.controller)
 --
 -- Responsibilities:
---   • Store persisted runtime specifications
---   • Lazily construct RuntimeView objects
---   • Compose labeled inputs (orders + boards)
---   • Cache runtime objects (non-persisted)
+--   • Hold persisted resource specs (shared reference)
+--   • Lazily construct runtime objects
+--   • Support simple and labeled input composition
+--   • Cache constructed runtimes (ephemeral)
 --
--- No CLI.
--- No printing.
--- No services.
+-- It explicitly does NOT:
+--   • Perform domain logic
+--   • Persist anything
+--   • Access filesystem directly
+--   • Know about services or UI
+--
+-- Lifecycle:
+--   Surface → RuntimeHub.new(state.resources)
+--   Service → hub:require("user")
+--   Hub     → RuntimeController.load(...)
+--
+-- Design invariant:
+--   _specs is a shared table reference to State.resources.
+--   Mutating specs affects runtime resolution immediately.
 
 local RuntimeController = require("core.domain.runtime.controller")
 
+---@class RuntimeHub
+---@field _specs table<string, { inputs: table, opts: table }>
+---@field _cache table<string, any>  -- ephemeral runtime cache
 local RuntimeHub = {}
 RuntimeHub.__index = RuntimeHub
 
@@ -21,13 +42,17 @@ RuntimeHub.__index = RuntimeHub
 -- Constructor
 ----------------------------------------------------------------
 
+---@param initial_specs? table
+---@return RuntimeHub
 function RuntimeHub.new(initial_specs)
     local self = setmetatable({}, RuntimeHub)
 
-    -- Persisted resource specs (shared with State)
+    -- Shared reference to persisted resource specifications.
+    -- DO NOT clone.
     self._specs = initial_specs or {}
 
-    -- Ephemeral runtime cache
+    -- Runtime objects are cached here.
+    -- Never persisted.
     self._cache = {}
 
     return self
@@ -36,7 +61,14 @@ end
 ----------------------------------------------------------------
 -- Spec Management (Persisted)
 ----------------------------------------------------------------
+-- These methods mutate the spec layer.
+-- They do NOT load runtimes.
+-- Any change invalidates the cache for that name.
 
+---@param name string
+---@param inputs table
+---@param opts? table
+---@return boolean|string
 function RuntimeHub:set(name, inputs, opts)
     if type(name) ~= "string" or name == "" then
         return false, "invalid name"
@@ -51,20 +83,25 @@ function RuntimeHub:set(name, inputs, opts)
         opts   = opts or {}
     }
 
+    -- Invalidate runtime cache
     self._cache[name] = nil
 
     return true
 end
 
+---@param name string
 function RuntimeHub:clear(name)
     self._specs[name] = nil
     self._cache[name] = nil
 end
 
+---@param name string
+---@return table|nil
 function RuntimeHub:spec(name)
     return self._specs[name]
 end
 
+---@return table
 function RuntimeHub:specs()
     return self._specs
 end
@@ -73,6 +110,8 @@ end
 -- Internal Helpers
 ----------------------------------------------------------------
 
+---@param inputs table
+---@return boolean
 local function is_labeled_inputs(inputs)
     return type(inputs) == "table"
         and (inputs.orders ~= nil or inputs.boards ~= nil)
@@ -81,7 +120,15 @@ end
 ----------------------------------------------------------------
 -- Loading
 ----------------------------------------------------------------
+-- Runtime construction happens here.
+--
+-- Failure model:
+--   • Returns nil, err on invalid spec
+--   • Does NOT throw
 
+---@param name string
+---@return any|nil runtime
+---@return string|nil err
 function RuntimeHub:load(name)
 
     local spec = self._specs[name]
@@ -98,6 +145,9 @@ function RuntimeHub:load(name)
 
     ------------------------------------------------------------
     -- CASE 1: Simple input (no labels)
+    --
+    -- Example:
+    --   { "file1.csv", "file2.csv" }
     ------------------------------------------------------------
 
     if not is_labeled_inputs(inputs) then
@@ -105,19 +155,21 @@ function RuntimeHub:load(name)
         local runtime
 
         if #inputs == 1 then
-            -- unwrap single input
+            -- Single input unwrap
             runtime = RuntimeController.load(inputs[1], opts)
         else
-            -- multiple simple inputs → load and merge batches
+            -- Multiple inputs → merge batches
             local merged_batches = {}
 
             for _, input_value in ipairs(inputs) do
                 local r = RuntimeController.load(input_value, opts)
+
                 for _, batch in ipairs(r:batches()) do
                     merged_batches[#merged_batches + 1] = batch
                 end
             end
 
+            -- Lightweight runtime wrapper
             runtime = {
                 batches = function() return merged_batches end
             }
@@ -129,6 +181,12 @@ function RuntimeHub:load(name)
 
     ------------------------------------------------------------
     -- CASE 2: Labeled input (orders + boards)
+    --
+    -- Example:
+    -- {
+    --   orders = ...,
+    --   boards = ...
+    -- }
     ------------------------------------------------------------
 
     local order_inputs = inputs.orders
@@ -169,7 +227,17 @@ end
 ----------------------------------------------------------------
 -- Access (Lazy + Safe)
 ----------------------------------------------------------------
+-- get():
+--   • Returns cached runtime if present
+--   • Otherwise triggers load()
+--
+-- require():
+--   • Same as get()
+--   • Explicit failure propagation
 
+---@param name string
+---@return any|nil runtime
+---@return string|nil err
 function RuntimeHub:get(name)
     if self._cache[name] then
         return self._cache[name]
@@ -177,6 +245,9 @@ function RuntimeHub:get(name)
     return self:load(name)
 end
 
+---@param name string
+---@return any|nil runtime
+---@return string|nil err
 function RuntimeHub:require(name)
     local runtime, err = self:get(name)
     if not runtime then
@@ -189,10 +260,14 @@ end
 -- Introspection
 ----------------------------------------------------------------
 
+---@param name string
+---@return boolean
 function RuntimeHub:is_loaded(name)
     return self._cache[name] ~= nil
 end
 
+---@param name string
+---@return boolean
 function RuntimeHub:is_configured(name)
     return self._specs[name] ~= nil
 end

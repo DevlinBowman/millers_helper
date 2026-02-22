@@ -1,17 +1,61 @@
 -- system/services/invoice_service.lua
 --
--- Invoice service.
--- Resolves runtime exclusively via RuntimeHub.
--- No direct RuntimeDomain usage.
--- No direct state.resource inspection.
+-- InvoiceService
+-- ==============
+--
+-- Orchestration layer for invoice generation.
+--
+-- Responsibilities:
+--   • Resolve required runtime via RuntimeHub
+--   • Extract canonical batch
+--   • Invoke Invoice domain controller
+--   • Render invoice text
+--   • Optionally export artifacts
+--   • Store model in state.results (ephemeral)
+--
+-- It explicitly does NOT:
+--   • Access state.resources directly
+--   • Load RuntimeDomain directly
+--   • Perform invoice business rules
+--   • Mutate ledger registry
+--
+-- Flow:
+--   Surface → InvoiceService.handle()
+--   → hub:require("user")
+--   → InvoiceDomain.run(...)
+--   → InvoiceDomain.render_text(...)
+--   → Optional export
+--   → state:set_result("invoice", model)
 
 local InvoiceDomain = require("core.domain.invoice.controller")
 
 local Storage     = require("system.infrastructure.storage.controller")
 local FileGateway = require("system.infrastructure.file_gateway")
 
+---@class InvoiceRequest
+---@field state State
+---@field hub RuntimeHub
+---@field opts? { export?: boolean, print?: boolean }
+
+---@class InvoiceResponse
+---@field ok boolean
+---@field model? any
+---@field error? string
+
+---@class InvoiceService
 local InvoiceService = {}
 
+----------------------------------------------------------------
+-- handle()
+----------------------------------------------------------------
+-- Generates and optionally exports an invoice.
+--
+-- Failure model:
+--   • Never throws
+--   • Returns { ok=false, error=... }
+--
+---@param req InvoiceRequest
+---@return InvoiceResponse
 function InvoiceService.handle(req)
 
     if not req or type(req) ~= "table" then
@@ -32,6 +76,8 @@ function InvoiceService.handle(req)
 
     ------------------------------------------------------------
     -- Resolve USER runtime
+    --
+    -- Invoice operates on a canonical order batch.
     ------------------------------------------------------------
 
     local runtime, err = hub:require("user")
@@ -44,6 +90,7 @@ function InvoiceService.handle(req)
         return { ok = false, error = "no batch available" }
     end
 
+    -- Invoice currently assumes first batch is canonical
     local batch = batches[1]
 
     if not batch.transaction_id then
@@ -51,20 +98,21 @@ function InvoiceService.handle(req)
     end
 
     ------------------------------------------------------------
-    -- Build invoice model
+    -- Build invoice model (Domain layer)
     ------------------------------------------------------------
 
+    -- Domain controller handles validation + totals
     local model = InvoiceDomain.run(batch, { print = false })
 
     ------------------------------------------------------------
-    -- Render
+    -- Render invoice text
     ------------------------------------------------------------
 
     local rendered = InvoiceDomain.render_text(model)
     local content  = table.concat(rendered.lines, "\n")
 
     ------------------------------------------------------------
-    -- Optional print
+    -- Optional print to stdout
     ------------------------------------------------------------
 
     if opts.print ~= false then
@@ -79,11 +127,12 @@ function InvoiceService.handle(req)
 
     if opts.export == true then
 
+        -- Canonical export identifiers
         local doc_path  = Storage.export_doc("invoices", model.id)
         local meta_path = Storage.export_meta("invoices", model.id)
 
         --------------------------------------------------------
-        -- Write invoice text
+        -- Write invoice text file
         --------------------------------------------------------
 
         local meta, write_err =
@@ -94,7 +143,7 @@ function InvoiceService.handle(req)
         end
 
         --------------------------------------------------------
-        -- Write invoice meta
+        -- Write invoice metadata
         --------------------------------------------------------
 
         local export_meta = {
@@ -114,7 +163,10 @@ function InvoiceService.handle(req)
         end
 
         --------------------------------------------------------
-        -- Optional: attach to ledger txn folder
+        -- Optional: attach invoice to ledger txn folder
+        --
+        -- This does NOT update ledger registry.
+        -- It only writes a file into the txn directory.
         --------------------------------------------------------
 
         local ledger_id =
@@ -133,7 +185,7 @@ function InvoiceService.handle(req)
     end
 
     ------------------------------------------------------------
-    -- Store result (ephemeral)
+    -- Store result in ephemeral session state
     ------------------------------------------------------------
 
     state:set_result("invoice", model)

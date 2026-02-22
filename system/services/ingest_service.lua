@@ -1,27 +1,64 @@
 -- system/services/ingest_service.lua
 --
--- General ingestion / formalization service.
--- Loads raw inputs via runtime domain and exports structured output.
+-- IngestService
+-- =============
 --
--- No business rules.
--- No ledger logic.
+-- General-purpose ingestion / formalization service.
+--
+-- Responsibilities:
+--   • Load arbitrary inputs via RuntimeController
+--   • Extract canonical batches
+--   • Flatten structured order/board bundles
+--   • Encode via platform.format
+--   • Write via platform.io
+--
+-- It explicitly does NOT:
+--   • Interact with State
+--   • Interact with RuntimeHub
+--   • Contain business rules
+--   • Contain ledger logic
+--
+-- This service is intentionally stateless and standalone.
+-- It is suitable for CLI utilities, batch conversion, and tooling.
 
 local RuntimeController = require("core.domain.runtime.controller")
 local Format            = require("platform.format.controller")
 local IO                = require("platform.io.controller")
 
+---@class IngestOptions
+---@field flatten? boolean        -- If false, order remains nested
+---@field exclude? string[]       -- Keys to remove from output objects
+
+---@class IngestRequest
+---@field inputs any              -- Runtime load input(s)
+---@field output_path string      -- Destination file path
+---@field codec? string           -- Encoding codec (default: "json")
+---@field opts? IngestOptions
+
+---@class IngestResponse
+---@field ok boolean
+---@field count? number
+---@field path? string
+---@field error? string
+
+---@class IngestService
 local IngestService = {}
 
 ----------------------------------------------------------------
 -- Helpers
 ----------------------------------------------------------------
 
+---@param dst table
+---@param src table
 local function merge(dst, src)
     for k, v in pairs(src) do
         dst[k] = v
     end
 end
 
+---@param obj table
+---@param exclude? string[]
+---@return table
 local function exclude_fields(obj, exclude)
     if not exclude then
         return obj
@@ -34,6 +71,32 @@ local function exclude_fields(obj, exclude)
     return obj
 end
 
+----------------------------------------------------------------
+-- flatten_batch()
+--
+-- Converts a canonical batch:
+--
+--   {
+--     order = {...},
+--     boards = { {...}, {...} }
+--   }
+--
+-- Into flat object rows:
+--
+--   {
+--     { <order fields merged>, <board fields> },
+--     ...
+--   }
+--
+-- Behavior:
+--   • If opts.flatten ~= false → merge order into each row
+--   • If opts.flatten == false → keep order nested under obj.order
+--   • Applies optional field exclusion
+----------------------------------------------------------------
+
+---@param batch table
+---@param opts IngestOptions
+---@return table[]
 local function flatten_batch(batch, opts)
 
     local objects = {}
@@ -60,9 +123,28 @@ local function flatten_batch(batch, opts)
 end
 
 ----------------------------------------------------------------
--- Public API
+-- handle()
 ----------------------------------------------------------------
+-- Ingest pipeline:
+--
+--   inputs
+--     ↓
+--   RuntimeController.load()
+--     ↓
+--   batches()
+--     ↓
+--   flatten_batch()
+--     ↓
+--   Format.encode()
+--     ↓
+--   IO.write()
+--
+-- Failure model:
+--   • Never throws
+--   • Returns { ok=false, error=... }
 
+---@param req IngestRequest
+---@return IngestResponse
 function IngestService.handle(req)
 
     if not req or type(req) ~= "table" then
@@ -94,13 +176,14 @@ function IngestService.handle(req)
     end
 
     ------------------------------------------------------------
-    -- Transform
+    -- Transform batches → flat object rows
     ------------------------------------------------------------
 
     local objects = {}
 
     for _, batch in ipairs(batches) do
         local flattened = flatten_batch(batch, opts)
+
         for _, obj in ipairs(flattened) do
             objects[#objects + 1] = obj
         end
@@ -129,7 +212,7 @@ function IngestService.handle(req)
     end
 
     return {
-        ok = true,
+        ok    = true,
         count = #objects,
         path  = output_path
     }
