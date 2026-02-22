@@ -1,3 +1,5 @@
+-- core/domain/ledger/internal/analytics.lua
+--
 local Registry = require("core.domain.ledger.registry")
 
 local Analytics = {}

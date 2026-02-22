@@ -1,3 +1,5 @@
+-- core/domain/ledger/internal/identity.lua
+--
 local Identity = {}
 
 local function stable_string(v)

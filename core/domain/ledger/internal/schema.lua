@@ -1,3 +1,5 @@
+-- core/domain/ledger/internal/schema.lua
+--
 local Schema = {}
 
 Schema.ROLES = {
