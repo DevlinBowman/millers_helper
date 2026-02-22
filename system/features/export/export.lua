@@ -9,7 +9,7 @@
 --
 -- Default codec: "delimited"
 
-local Project = require("pipelines.export.project")
+local Project = require("system.features.export.project")
 local Format  = require("platform.format.controller")
 local IO      = require("platform.io.controller")
 
