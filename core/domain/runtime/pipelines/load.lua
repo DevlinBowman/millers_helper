@@ -21,7 +21,6 @@
 
 local Ingest  = require("platform.pipelines.ingestion.ingest")
 local Ledger  = require("core.domain.ledger.controller")
-local Storage = require("core.domain.ledger.internal.storage")
 local IO      = require('platform.io.controller')
 
 ----------------------------------------------------------------
