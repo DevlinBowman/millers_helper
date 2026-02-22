@@ -34,7 +34,9 @@ function Surface.new(opts)
     local self = setmetatable({}, Surface)
 
     self.state = state
-    self.hub   = RuntimeHub.new(state:resources_table())
+
+    -- CRITICAL: bind directly to same table
+    self.hub = RuntimeHub.new(self.state.resources)
 
     return self
 end
@@ -44,9 +46,18 @@ end
 ----------------------------------------------------------------
 
 function Surface:set_resource(name, input, opts)
+
+    local inputs
+
+    if type(input) == "table" then
+        inputs = input
+    else
+        inputs = { input }
+    end
+
     return self.state:set_resource(name, {
-        input = input,
-        opts  = opts or {}
+        inputs = inputs,
+        opts   = opts or {}
     })
 end
 

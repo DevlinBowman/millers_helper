@@ -101,8 +101,27 @@ function RuntimeHub:load(name)
     ------------------------------------------------------------
 
     if not is_labeled_inputs(inputs) then
-        local runtime =
-            RuntimeController.load(inputs, opts)
+
+        local runtime
+
+        if #inputs == 1 then
+            -- unwrap single input
+            runtime = RuntimeController.load(inputs[1], opts)
+        else
+            -- multiple simple inputs → load and merge batches
+            local merged_batches = {}
+
+            for _, input_value in ipairs(inputs) do
+                local r = RuntimeController.load(input_value, opts)
+                for _, batch in ipairs(r:batches()) do
+                    merged_batches[#merged_batches + 1] = batch
+                end
+            end
+
+            runtime = {
+                batches = function() return merged_batches end
+            }
+        end
 
         self._cache[name] = runtime
         return runtime

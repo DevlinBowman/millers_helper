@@ -58,8 +58,8 @@ function State:set_resource(name, spec)
         return false, "resource spec must be table"
     end
 
-    if spec.input == nil then
-        return false, "resource spec missing input"
+    if spec.inputs == nil then
+        return false, "resource spec missing inputs"
     end
 
     spec.opts = ensure_table(spec.opts)
