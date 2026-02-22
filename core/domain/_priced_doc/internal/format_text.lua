@@ -1,10 +1,10 @@
--- core/domain/invoice/internal/format_text.lua
+-- core/domain/_priced_doc/format_text.lua
 
 local Format = {}
 
 local COL = {
     qty    = 4,
-    item   = 28,
+    item   = 32,
     bf     = 10,
     rate   = 10,
     amount = 12,
@@ -26,17 +26,21 @@ local function money(n)
     return "$" .. string.format("%.2f", n)
 end
 
-function Format.render(invoice)
+function Format.render(doc)
     local out = {}
     local function emit(line) out[#out + 1] = line end
 
     emit(string.rep("=", LINE_WIDTH))
+    emit("ID: " .. (doc.id or "-"))
+    emit("GENERATED: " .. (doc.generated_at or "-"))
 
-    if invoice.header then
-        emit("ORDER: " .. (invoice.header.order_id or "-"))
-        emit("CUSTOMER: " .. (invoice.header.customer or "-"))
-        emit(string.rep("-", LINE_WIDTH))
+    if doc.header then
+        for k, v in pairs(doc.header) do
+            emit(string.upper(k) .. ": " .. tostring(v))
+        end
     end
+
+    emit(string.rep("-", LINE_WIDTH))
 
     emit(
         rjust(COL.qty, "QTY") ..
@@ -48,7 +52,7 @@ function Format.render(invoice)
 
     emit(string.rep("-", LINE_WIDTH))
 
-    for _, r in ipairs(invoice.rows or {}) do
+    for _, r in ipairs(doc.rows or {}) do
         emit(
             rjust(COL.qty, tostring(r.ct or 0)) ..
             ljust(COL.item, " " .. (r.label or "")) ..
@@ -60,7 +64,7 @@ function Format.render(invoice)
 
     emit(string.rep("-", LINE_WIDTH))
 
-    local t = invoice.totals or {}
+    local t = doc.totals or {}
 
     emit(
         rjust(COL.qty + COL.item, "TOTALS") ..
