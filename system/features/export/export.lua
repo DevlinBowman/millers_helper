@@ -1,4 +1,4 @@
--- pipelines/export/export.lua
+-- system/features/export/export.lua
 --
 -- High-level export pipeline.
 --
@@ -9,14 +9,14 @@
 --
 -- Default codec: "delimited"
 
-local Project = require("pipelines.export.project")
-local Format  = require("platform.format.controller")
-local IO      = require("platform.io.controller")
+local Project   = require("system.features.export.project")
+local Format    = require("platform.format.controller")
+local IO        = require("platform.io.controller")
 
-local Trace    = require("tools.trace.trace")
-local Contract = require("core.contract")
+local Trace     = require("tools.trace.trace")
+local Contract  = require("core.contract")
 
-local Export = {}
+local Export    = {}
 
 ----------------------------------------------------------------
 -- Contract
@@ -45,7 +45,6 @@ Export.CONTRACT = {
 ----------------------------------------------------------------
 
 function Export.write_groups(path, groups, codec, opts)
-
     Trace.contract_enter("pipelines.export.write_groups")
     Trace.contract_in(Export.CONTRACT.write_groups.in_)
 
@@ -54,14 +53,19 @@ function Export.write_groups(path, groups, codec, opts)
         Export.CONTRACT.write_groups.in_
     )
 
-    codec = codec or "delimited"
-    opts  = opts  or {}
+    codec         = codec or "delimited"
+    opts          = opts or {}
 
     ------------------------------------------------------------
     -- Project
     ------------------------------------------------------------
 
     local objects = Project.groups_to_objects(groups)
+
+    -- Optional vendor cache export mode
+    if opts and opts.mode == "vendor_cache" then
+        objects = Project.vendor_trim(objects)
+    end
 
     ------------------------------------------------------------
     -- Encode
