@@ -21,7 +21,7 @@ function FileGateway.write_json(path, data)
 end
 
 function FileGateway.read_json(path)
-    print('[WRITE] FileGateway.read_json @ ', path)
+    print('[READ] FileGateway.read_json @ ', path)
     local result, err = IO.read(path)
     if not result then
         return nil, err
