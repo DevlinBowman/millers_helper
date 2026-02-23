@@ -1,4 +1,4 @@
--- io/pipelines/write.lua
+-- platform/io/pipelines/write.lua
 --
 -- Pure IO write primitives.
 -- NO format inference. NO shape inspection.
