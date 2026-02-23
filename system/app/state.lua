@@ -2,39 +2,19 @@
 --
 -- State
 -- =====
+-- Persisted:
+--   - context   (session key/value)
+--   - resources (runtime spec tree; namespaced)
 --
--- State is the minimal session container.
---
--- It owns ONLY:
---   • context   (persisted key/value session data)
---   • resources (persisted runtime specifications)
---
--- It also owns:
---   • results   (ephemeral service outputs; never persisted)
---
--- It explicitly does NOT:
---   • Perform IO
---   • Load runtimes
---   • Perform domain logic
---   • Validate business rules
---
--- State is intentionally simple.
--- It models *session intent*, not execution.
+-- Ephemeral:
+--   - results   (service outputs; never persisted)
 
 ---@class State
----@field context table<string, any>                      -- Persisted session context
----@field resources table<string, RuntimeSpec>           -- Persisted runtime specifications
----@field results table<string, any>                     -- Ephemeral service outputs
+---@field context table<string, any>
+---@field resources table
+---@field results table<string, any>
 local State = {}
 State.__index = State
-
-----------------------------------------------------------------
--- Types
-----------------------------------------------------------------
-
----@class RuntimeSpec
----@field inputs table      -- Runtime inputs (simple array or labeled table)
----@field opts table        -- Runtime options
 
 ----------------------------------------------------------------
 -- Helpers
@@ -49,6 +29,60 @@ local function ensure_table(value)
     return {}
 end
 
+---@param s string
+---@return string[]
+local function split_path(s)
+    local parts = {}
+    if type(s) ~= "string" or s == "" then
+        return parts
+    end
+    for part in string.gmatch(s, "([^%.]+)") do
+        parts[#parts + 1] = part
+    end
+    return parts
+end
+
+---@param root table
+---@param path string
+---@param create boolean
+---@return table|nil parent
+---@return string|nil key
+local function walk_parent(root, path, create)
+    local parts = split_path(path)
+    if #parts == 0 then
+        return nil, nil
+    end
+
+    local current = root
+    for i = 1, #parts - 1 do
+        local k = parts[i]
+        if type(current[k]) ~= "table" then
+            if not create then
+                return nil, nil
+            end
+            current[k] = {}
+        end
+        current = current[k]
+    end
+
+    return current, parts[#parts]
+end
+
+---@param root table
+---@param path string
+---@return any
+local function get_by_path(root, path)
+    local parts = split_path(path)
+    local current = root
+    for i = 1, #parts do
+        if type(current) ~= "table" then
+            return nil
+        end
+        current = current[parts[i]]
+    end
+    return current
+end
+
 ----------------------------------------------------------------
 -- Constructor
 ----------------------------------------------------------------
@@ -60,85 +94,86 @@ function State.new(initial)
 
     local self = setmetatable({}, State)
 
-    ------------------------------------------------------------
-    -- Persisted data
-    ------------------------------------------------------------
-
-    -- Arbitrary session key/value pairs.
-    -- Example: active_ledger
     self.context   = ensure_table(initial.context)
-
-    -- Runtime specifications only.
-    -- NEVER runtime objects.
     self.resources = ensure_table(initial.resources)
-
-    ------------------------------------------------------------
-    -- Ephemeral data
-    ------------------------------------------------------------
-
-    -- Service outputs (compare, quote, invoice, etc.)
-    -- NEVER persisted.
     self.results   = ensure_table(initial.results)
+
+    -- Ensure namespace roots exist deterministically
+    self.resources.user   = ensure_table(self.resources.user)
+    self.resources.system = ensure_table(self.resources.system)
 
     return self
 end
 
 ----------------------------------------------------------------
--- Resource Management (Persisted Runtime Specs)
+-- Resource Spec Tree
 ----------------------------------------------------------------
--- A resource is a persistable runtime specification:
+-- Resources are stored as a tree under:
+--   resources.user
+--   resources.system
 --
--- resources[name] = {
---     inputs = <array|string|labeled-table>,
---     opts   = <table>
--- }
---
--- No validation of inputs occurs here.
--- RuntimeHub is responsible for interpreting these specs.
+-- Leaf nodes are runtime specs:
+--   { inputs = {...}, opts = {...} }
 
----@param name string
----@param spec RuntimeSpec
+---@param path string
+---@param spec table
 ---@return boolean|string
-function State:set_resource(name, spec)
-    if type(name) ~= "string" or name == "" then
-        return false, "invalid resource name"
+function State:set_resource(path, spec)
+    if type(path) ~= "string" or path == "" then
+        return false, "invalid resource path"
     end
-
     if type(spec) ~= "table" then
         return false, "resource spec must be table"
     end
-
     if spec.inputs == nil then
         return false, "resource spec missing inputs"
     end
 
     spec.opts = ensure_table(spec.opts)
 
-    self.resources[name] = spec
+    local parent, key = walk_parent(self.resources, path, true)
+    if not parent or not key then
+        return false, "invalid resource path"
+    end
+
+    parent[key] = spec
     return true
 end
 
----@param name string
----@return RuntimeSpec|nil
-function State:get_resource(name)
-    if type(name) ~= "string" then
+---@param path string
+---@return table|nil
+function State:get_resource(path)
+    if type(path) ~= "string" or path == "" then
         return nil
     end
-    return self.resources[name]
+    local v = get_by_path(self.resources, path)
+    if type(v) ~= "table" then
+        return nil
+    end
+    -- leaf spec must have inputs; otherwise it's a namespace node
+    if v.inputs == nil then
+        return nil
+    end
+    return v
 end
 
----@param name string
+---@param path string
 ---@return boolean|string
-function State:clear_resource(name)
-    if type(name) ~= "string" then
-        return false, "invalid resource name"
+function State:clear_resource(path)
+    if type(path) ~= "string" or path == "" then
+        return false, "invalid resource path"
     end
 
-    self.resources[name] = nil
+    local parent, key = walk_parent(self.resources, path, false)
+    if not parent or not key then
+        return false, "resource path not found"
+    end
+
+    parent[key] = nil
     return true
 end
 
----@return table<string, RuntimeSpec>
+---@return table
 function State:resources_table()
     return self.resources
 end
@@ -146,9 +181,6 @@ end
 ----------------------------------------------------------------
 -- Context (Persisted)
 ----------------------------------------------------------------
--- Arbitrary key/value session data.
--- Example:
---   state:set_context("active_ledger", "default")
 
 ---@param key string
 ---@param value any
@@ -157,7 +189,6 @@ function State:set_context(key, value)
     if type(key) ~= "string" or key == "" then
         return false, "invalid context key"
     end
-
     self.context[key] = value
     return true
 end
@@ -168,7 +199,6 @@ function State:get_context(key)
     if type(key) ~= "string" then
         return nil
     end
-
     return self.context[key]
 end
 
@@ -180,12 +210,6 @@ end
 ----------------------------------------------------------------
 -- Results (Ephemeral)
 ----------------------------------------------------------------
--- Service outputs are stored here.
--- Examples:
---   state:set_result("compare", model)
---   state:set_result("invoice", model)
---
--- Results are NEVER persisted.
 
 ---@param key string
 ---@param value any
@@ -194,7 +218,6 @@ function State:set_result(key, value)
     if type(key) ~= "string" or key == "" then
         return false, "invalid result key"
     end
-
     self.results[key] = value
     return true
 end
@@ -205,7 +228,6 @@ function State:get_result(key)
     if type(key) ~= "string" then
         return nil
     end
-
     return self.results[key]
 end
 
@@ -215,18 +237,59 @@ function State:clear_result(key)
     if type(key) ~= "string" then
         return false, "invalid result key"
     end
-
     self.results[key] = nil
+    return true
+end
+
+----------------------------------------------------------------
+-- Reset / Clear Helpers
+----------------------------------------------------------------
+
+function State:clear_resources()
+    -- Do NOT replace the table reference.
+    -- Mutate existing namespace roots to preserve hub._specs reference.
+
+    if type(self.resources) ~= "table" then
+        self.resources = {}
+    end
+
+    self.resources.user   = {}
+    self.resources.system = {}
+
+    return true
+end
+
+function State:clear_results()
+    self.results = {}
+    return true
+end
+
+function State:clear_context()
+    self.context = {}
+    return true
+end
+
+function State:reset()
+    -- Reset persisted context
+    self.context = {}
+
+    -- Preserve table reference integrity
+    if type(self.resources) ~= "table" then
+        self.resources = {}
+    end
+
+    self.resources.user   = {}
+    self.resources.system = {}
+
+    -- Reset ephemeral results
+    self.results = {}
+
     return true
 end
 
 ----------------------------------------------------------------
 -- Persistable Snapshot
 ----------------------------------------------------------------
--- Produces a serializable snapshot.
--- This is what Persistence.save() writes to disk.
---
--- results intentionally excluded.
 
 ---@return { version: number, context: table, resources: table }
 function State:to_persistable()

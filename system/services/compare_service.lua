@@ -6,24 +6,11 @@
 -- Orchestration layer for price/source comparison.
 --
 -- Responsibilities:
---   • Resolve required runtimes via RuntimeHub
+--   • Resolve required runtimes via RuntimeHub (namespaced keys)
+--   • Prefer user override vendors when present, else system vendor cache
 --   • Extract canonical bundles
 --   • Invoke Compare domain controller
 --   • Store result in state.results (ephemeral)
---   • Optionally export artifact
---
--- It explicitly does NOT:
---   • Access state.resources directly
---   • Load runtime domain directly
---   • Perform filesystem schema logic
---   • Contain business rules
---
--- Execution flow:
---   Surface → CompareService.handle()
---   → hub:require("user")
---   → hub:require("vendors")
---   → CompareDomain.compare(...)
---   → state:set_result("compare", result)
 
 local CompareDomain = require("core.domain.compare.controller")
 
@@ -40,20 +27,67 @@ local FileGateway = require("system.infrastructure.file_gateway")
 ---@field result? any
 ---@field error? string
 
----@class CompareService
 local CompareService = {}
+
+----------------------------------------------------------------
+-- Internal helpers
+----------------------------------------------------------------
+
+---@param hub RuntimeHub
+---@param name string
+---@return boolean
+local function spec_has_inputs(hub, name)
+    if not hub or not hub.spec then
+        return false
+    end
+
+    local spec = hub:spec(name)
+    if not spec or type(spec) ~= "table" then
+        return false
+    end
+
+    local inputs = spec.inputs
+    if type(inputs) ~= "table" then
+        return false
+    end
+
+    return (#inputs > 0) or (inputs.orders ~= nil) or (inputs.boards ~= nil)
+end
+
+---@param hub RuntimeHub
+---@return string chosen_key
+local function choose_vendor_key(hub)
+    -- Prefer explicit user override if configured with inputs.
+    if spec_has_inputs(hub, "user.vendors") then
+        return "user.vendors"
+    end
+
+    -- Otherwise use system vendor cache.
+    return "system.vendors"
+end
+
+---@param hub RuntimeHub
+---@return any|nil runtime
+---@return string|nil err
+local function require_user_order_runtime(hub)
+    return hub:require("user.order")
+end
+
+---@param hub RuntimeHub
+---@return any|nil runtime
+---@return string|nil err
+local function require_vendor_runtime(hub)
+    local key = choose_vendor_key(hub)
+    local runtime, err = hub:require(key)
+    if not runtime then
+        return nil, (err or ("vendor runtime not available: " .. key))
+    end
+    return runtime
+end
 
 ----------------------------------------------------------------
 -- handle()
 ----------------------------------------------------------------
--- Orchestrates comparison between:
---   • user order bundle
---   • vendor board sources
---
--- Failure model:
---   • Never throws
---   • Returns { ok=false, error=... }
---
 ---@param req CompareRequest
 ---@return CompareResponse
 function CompareService.handle(req)
@@ -75,14 +109,12 @@ function CompareService.handle(req)
     end
 
     ------------------------------------------------------------
-    -- Resolve USER runtime
-    --
-    -- Expected to contain an order bundle.
+    -- Resolve USER order runtime
     ------------------------------------------------------------
 
-    local user_runtime, err = hub:require("user")
+    local user_runtime, err = require_user_order_runtime(hub)
     if not user_runtime then
-        return { ok = false, error = err or "user runtime not available" }
+        return { ok = false, error = err or "user.order runtime not available" }
     end
 
     local user_batches = user_runtime:batches()
@@ -90,16 +122,13 @@ function CompareService.handle(req)
         return { ok = false, error = "no user batch available" }
     end
 
-    -- First bundle assumed canonical for comparison
     local order_bundle = user_batches[1]
 
     ------------------------------------------------------------
-    -- Resolve VENDOR runtime
-    --
-    -- Expected to contain multiple vendor board sets.
+    -- Resolve VENDOR runtime (user override OR system cache)
     ------------------------------------------------------------
 
-    local vendor_runtime, err2 = hub:require("vendors")
+    local vendor_runtime, err2 = require_vendor_runtime(hub)
     if not vendor_runtime then
         return { ok = false, error = err2 or "vendor runtime not available" }
     end
@@ -113,7 +142,6 @@ function CompareService.handle(req)
     -- Normalize vendor batches into compare sources
     ------------------------------------------------------------
 
-    ---@type table[]
     local sources = {}
 
     for i, batch in ipairs(vendor_batches) do
@@ -131,8 +159,7 @@ function CompareService.handle(req)
     -- Domain comparison
     ------------------------------------------------------------
 
-    local result =
-        CompareDomain.compare(order_bundle, sources, {})
+    local result = CompareDomain.compare(order_bundle, sources, {})
 
     ------------------------------------------------------------
     -- Store result (ephemeral session output)
@@ -145,16 +172,13 @@ function CompareService.handle(req)
     ------------------------------------------------------------
 
     if opts.export == true then
-
         local compare_id = "COMPARE-" .. os.time()
 
         local doc_path  = Storage.export_doc("compare", compare_id)
         local meta_path = Storage.export_meta("compare", compare_id)
 
-        -- Write result JSON
         FileGateway.write(doc_path, "json", result)
 
-        -- Write metadata
         FileGateway.write(meta_path, "json", {
             compare_id   = compare_id,
             generated_at = os.date("%Y-%m-%d %H:%M:%S"),

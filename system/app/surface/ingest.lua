@@ -2,10 +2,21 @@
 
 local IngestSvc = require("system.services.ingest_service")
 
-return function(Surface)
+local Ingest = {}
+Ingest.__index = Ingest
 
-    function Surface:run_ingest(opts)
-        return IngestSvc.handle(opts)
-    end
-
+function Ingest.new(surface)
+    local self = setmetatable({}, Ingest)
+    self._surface = surface
+    return self
 end
+
+function Ingest:run(opts)
+    return IngestSvc.handle({
+        state = self._surface.state,
+        hub   = self._surface.hub,
+        opts  = opts
+    })
+end
+
+return Ingest

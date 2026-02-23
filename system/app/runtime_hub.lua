@@ -1,42 +1,37 @@
--- system/app/runtime_hub.lua
---
--- RuntimeHub
--- ==========
---
--- RuntimeHub is the system's runtime composition layer.
---
--- It sits between:
---   • Persisted resource specifications (State.resources)
---   • Domain runtime construction (core.domain.runtime.controller)
---
--- Responsibilities:
---   • Hold persisted resource specs (shared reference)
---   • Lazily construct runtime objects
---   • Support simple and labeled input composition
---   • Cache constructed runtimes (ephemeral)
---
--- It explicitly does NOT:
---   • Perform domain logic
---   • Persist anything
---   • Access filesystem directly
---   • Know about services or UI
---
--- Lifecycle:
---   Surface → RuntimeHub.new(state.resources)
---   Service → hub:require("user")
---   Hub     → RuntimeController.load(...)
---
--- Design invariant:
---   _specs is a shared table reference to State.resources.
---   Mutating specs affects runtime resolution immediately.
-
 local RuntimeController = require("core.domain.runtime.controller")
 
 ---@class RuntimeHub
----@field _specs table<string, { inputs: table, opts: table }>
----@field _cache table<string, any>  -- ephemeral runtime cache
+---@field _specs table
+---@field _cache table<string, any>
 local RuntimeHub = {}
 RuntimeHub.__index = RuntimeHub
+
+----------------------------------------------------------------
+-- Utilities
+----------------------------------------------------------------
+
+local function split_path(s)
+    local parts = {}
+    if type(s) ~= "string" or s == "" then
+        return parts
+    end
+    for part in string.gmatch(s, "([^%.]+)") do
+        parts[#parts + 1] = part
+    end
+    return parts
+end
+
+local function get_by_path(root, path)
+    local parts = split_path(path)
+    local current = root
+    for i = 1, #parts do
+        if type(current) ~= "table" then
+            return nil
+        end
+        current = current[parts[i]]
+    end
+    return current
+end
 
 ----------------------------------------------------------------
 -- Constructor
@@ -46,94 +41,99 @@ RuntimeHub.__index = RuntimeHub
 ---@return RuntimeHub
 function RuntimeHub.new(initial_specs)
     local self = setmetatable({}, RuntimeHub)
-
-    -- Shared reference to persisted resource specifications.
-    -- DO NOT clone.
     self._specs = initial_specs or {}
-
-    -- Runtime objects are cached here.
-    -- Never persisted.
     self._cache = {}
-
     return self
 end
 
 ----------------------------------------------------------------
--- Spec Management (Persisted)
+-- Spec Access
 ----------------------------------------------------------------
--- These methods mutate the spec layer.
--- They do NOT load runtimes.
--- Any change invalidates the cache for that name.
 
----@param name string
----@param inputs table
----@param opts? table
----@return boolean|string
-function RuntimeHub:set(name, inputs, opts)
-    if type(name) ~= "string" or name == "" then
-        return false, "invalid name"
+---@param path string
+function RuntimeHub:invalidate(path)
+    if type(path) ~= "string" or path == "" then
+        return
     end
-
-    if type(inputs) ~= "table" then
-        return false, "resource inputs must be table"
-    end
-
-    self._specs[name] = {
-        inputs = inputs,
-        opts   = opts or {}
-    }
-
-    -- Invalidate runtime cache
-    self._cache[name] = nil
-
-    return true
+    self._cache[path] = nil
 end
 
----@param name string
-function RuntimeHub:clear(name)
-    self._specs[name] = nil
-    self._cache[name] = nil
-end
-
----@param name string
+---@param path string
 ---@return table|nil
-function RuntimeHub:spec(name)
-    return self._specs[name]
+function RuntimeHub:spec(path)
+    local v = get_by_path(self._specs, path)
+    if type(v) ~= "table" then
+        return nil
+    end
+    if v.inputs == nil then
+        return nil
+    end
+    return v
 end
 
----@return table
-function RuntimeHub:specs()
-    return self._specs
-end
-
-----------------------------------------------------------------
--- Internal Helpers
-----------------------------------------------------------------
-
----@param inputs table
+---@param path string
 ---@return boolean
-local function is_labeled_inputs(inputs)
-    return type(inputs) == "table"
-        and (inputs.orders ~= nil or inputs.boards ~= nil)
+function RuntimeHub:is_configured(path)
+    return self:spec(path) ~= nil
+end
+
+---@param path string
+---@return boolean
+function RuntimeHub:is_loaded(path)
+    return self._cache[path] ~= nil
 end
 
 ----------------------------------------------------------------
--- Loading
+-- Error Normalization
 ----------------------------------------------------------------
--- Runtime construction happens here.
---
--- Failure model:
---   • Returns nil, err on invalid spec
---   • Does NOT throw
 
----@param name string
+function RuntimeHub:_format_load_error(resource_name, err)
+    if type(err) ~= "table" then
+        return {
+            ok       = false,
+            kind     = "runtime_load_failure",
+            resource = resource_name,
+            message  = tostring(err)
+        }
+    end
+
+    local decode_err =
+        err.error
+        and err.error.error
+
+    if decode_err
+        and decode_err.kind == "parser_validation_error"
+        and decode_err.errors
+    then
+        return {
+            ok       = false,
+            kind     = "user_input_error",
+            resource = resource_name,
+            path     = err.path,
+            message  = "Some input data could not be parsed.",
+            details  = decode_err.errors
+        }
+    end
+
+    return {
+        ok       = false,
+        kind     = "runtime_load_failure",
+        resource = resource_name,
+        message  = err.message or tostring(err)
+    }
+end
+
+----------------------------------------------------------------
+-- Core Loading
+----------------------------------------------------------------
+
+---@param path string
 ---@return any|nil runtime
----@return string|nil err
-function RuntimeHub:load(name)
-
-    local spec = self._specs[name]
+---@return table|string|nil err
+function RuntimeHub:load(path)
+    local spec = self:spec(path)
     if not spec then
-        return nil, "missing spec: " .. tostring(name)
+        return nil, "missing spec: " .. tostring(path)
     end
 
     local inputs = spec.inputs
@@ -144,132 +144,69 @@ function RuntimeHub:load(name)
     end
 
     ------------------------------------------------------------
-    -- CASE 1: Simple input (no labels)
-    --
-    -- Example:
-    --   { "file1.csv", "file2.csv" }
+    -- Single Input
     ------------------------------------------------------------
 
-    if not is_labeled_inputs(inputs) then
+    if #inputs == 1 then
+        local runtime, err =
+            RuntimeController.load(inputs[1], opts)
 
-        local runtime
-
-        if #inputs == 1 then
-            -- Single input unwrap
-            runtime = RuntimeController.load(inputs[1], opts)
-        else
-            -- Multiple inputs → merge batches
-            local merged_batches = {}
-
-            for _, input_value in ipairs(inputs) do
-                local r = RuntimeController.load(input_value, opts)
-
-                for _, batch in ipairs(r:batches()) do
-                    merged_batches[#merged_batches + 1] = batch
-                end
-            end
-
-            -- Lightweight runtime wrapper
-            runtime = {
-                batches = function() return merged_batches end
-            }
+        if not runtime then
+            return nil, self:_format_load_error(path, err)
         end
 
-        self._cache[name] = runtime
+        self._cache[path] = runtime
         return runtime
     end
 
     ------------------------------------------------------------
-    -- CASE 2: Labeled input (orders + boards)
-    --
-    -- Example:
-    -- {
-    --   orders = ...,
-    --   boards = ...
-    -- }
+    -- Multi Input Merge
     ------------------------------------------------------------
 
-    local order_inputs = inputs.orders
-    local board_inputs = inputs.boards
+    local merged_batches = {}
 
-    if not order_inputs then
-        return nil, "labeled resource missing 'orders'"
+    for _, input_value in ipairs(inputs) do
+        local runtime, err =
+            RuntimeController.load(input_value, opts)
+
+        if not runtime then
+            return nil, self:_format_load_error(path, err)
+        end
+
+        for _, batch in ipairs(runtime:batches() or {}) do
+            merged_batches[#merged_batches + 1] = batch
+        end
     end
 
-    if not board_inputs then
-        return nil, "labeled resource missing 'boards'"
-    end
+    local merged_runtime = {
+        batches = function()
+            return merged_batches
+        end
+    }
 
-    local order_runtime =
-        RuntimeController.load(order_inputs, {
-            category = "order",
-            name     = name
-        })
-
-    local board_runtime =
-        RuntimeController.load(board_inputs, {
-            category = "board",
-            name     = name
-        })
-
-    local associated =
-        RuntimeController.associate(
-            order_runtime,
-            board_runtime,
-            { name = name }
-        )
-
-    self._cache[name] = associated
-
-    return associated
+    self._cache[path] = merged_runtime
+    return merged_runtime
 end
 
 ----------------------------------------------------------------
--- Access (Lazy + Safe)
+-- Accessors
 ----------------------------------------------------------------
--- get():
---   • Returns cached runtime if present
---   • Otherwise triggers load()
---
--- require():
---   • Same as get()
---   • Explicit failure propagation
 
----@param name string
+---@param path string
 ---@return any|nil runtime
----@return string|nil err
-function RuntimeHub:get(name)
-    if self._cache[name] then
-        return self._cache[name]
+---@return table|string|nil err
+function RuntimeHub:get(path)
+    if self._cache[path] then
+        return self._cache[path]
     end
-    return self:load(name)
+    return self:load(path)
 end
 
----@param name string
+---@param path string
 ---@return any|nil runtime
----@return string|nil err
-function RuntimeHub:require(name)
-    local runtime, err = self:get(name)
-    if not runtime then
-        return nil, err
-    end
-    return runtime
-end
-
-----------------------------------------------------------------
--- Introspection
-----------------------------------------------------------------
-
----@param name string
----@return boolean
-function RuntimeHub:is_loaded(name)
-    return self._cache[name] ~= nil
-end
-
----@param name string
----@return boolean
-function RuntimeHub:is_configured(name)
-    return self._specs[name] ~= nil
+---@return table|string|nil err
+function RuntimeHub:require(path)
+    return self:get(path)
 end
 
 return RuntimeHub

@@ -1,15 +1,20 @@
--- system/app/surface/invoice.lua
-
 local InvoiceSvc = require("system.services.invoice_service")
 
-return function(Surface)
+local Invoice = {}
+Invoice.__index = Invoice
 
-    function Surface:run_invoice(opts)
-        return InvoiceSvc.handle({
-            state = self.state,
-            hub   = self.hub,
-            opts  = opts
-        })
-    end
-
+function Invoice.new(surface)
+    local self = setmetatable({}, Invoice)
+    self._surface = surface
+    return self
 end
+
+function Invoice:run(opts)
+    return InvoiceSvc.handle({
+        state = self._surface.state,
+        hub   = self._surface.hub,
+        opts  = opts
+    })
+end
+
+return Invoice

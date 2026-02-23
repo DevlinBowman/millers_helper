@@ -11,8 +11,24 @@ local Storage = {}
 ------------------------------------------------------------
 -- Configuration
 ------------------------------------------------------------
+-- Detect project root relative to this file
+-- Detect project root relative to this file
+local function detect_project_root()
+    local source = debug.getinfo(1, "S").source
+    local filepath = source:sub(2) -- strip leading "@"
 
-local BASE_DIR = "data"
+    -- Normalize slashes
+    filepath = filepath:gsub("\\", "/")
+
+    -- Remove "/system/infrastructure/storage/controller.lua"
+    local root = filepath:gsub("/system/infrastructure/storage/controller.lua$", "")
+
+    return root
+end
+
+local PROJECT_ROOT = detect_project_root()
+local BASE_DIR = PROJECT_ROOT .. "/data"
+
 local APP_DIR  = "app"
 local INSTANCE = "default"
 

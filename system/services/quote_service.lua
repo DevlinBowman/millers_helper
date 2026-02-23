@@ -1,8 +1,8 @@
 -- system/services/quote_service.lua
 --
 -- Quote service.
--- Resolves runtime exclusively via RuntimeHub.
--- No direct state.runtime coupling.
+-- Resolves runtime exclusively via RuntimeHub (namespaced keys).
+-- No direct state.resources coupling.
 
 local QuoteDomain = require("core.domain.quote.controller")
 
@@ -10,6 +10,16 @@ local Storage     = require("system.infrastructure.storage.controller")
 local FileGateway = require("system.infrastructure.file_gateway")
 
 local QuoteService = {}
+
+----------------------------------------------------------------
+-- Internal: resolve canonical user order runtime
+----------------------------------------------------------------
+---@param hub RuntimeHub
+---@return any|nil runtime
+---@return string|nil err
+local function require_user_order_runtime(hub)
+    return hub:require("user.order")
+end
 
 function QuoteService.handle(req)
 
@@ -30,12 +40,12 @@ function QuoteService.handle(req)
     end
 
     ------------------------------------------------------------
-    -- Resolve USER runtime
+    -- Resolve USER order runtime
     ------------------------------------------------------------
 
-    local runtime, err = hub:require("user")
+    local runtime, err = require_user_order_runtime(hub)
     if not runtime then
-        return { ok = false, error = err or "user runtime not available" }
+        return { ok = false, error = err or "user.order runtime not available" }
     end
 
     local batches = runtime:batches()
