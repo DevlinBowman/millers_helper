@@ -11,6 +11,7 @@
 --   • Exported only if opts.include_diagnostics == true
 
 local Registry      = require("platform.io.registry")
+local Query         = require("platform.io.query.controller")
 local Validate      = Registry.validate.input
 local FS            = Registry.fs
 
@@ -53,8 +54,25 @@ Controller.CONTRACT = {
             write_time = true,
         },
     },
-}
 
+    query = {
+        in_ = {
+            path = true,
+            opts = false,
+        },
+
+        out = {
+            path    = true,
+            exists  = true,
+            kind    = true,
+            entries = false,
+            files   = false,
+            dirs    = false,
+            size    = false,
+            hash    = false,
+        },
+    },
+}
 ----------------------------------------------------------------
 -- Internal normalization
 ----------------------------------------------------------------
@@ -221,6 +239,52 @@ function Controller.write(path, payload, opts)
 end
 
 ----------------------------------------------------------------
+-- Query (RELAXED)
+----------------------------------------------------------------
+
+function Controller.query(path, opts)
+    opts = opts or {}
+    local include_diag = opts.include_diagnostics == true
+
+    Trace.contract_enter("io.controller.query")
+    Trace.contract_in({ path = path })
+
+    Contract.assert(
+        { path = path, opts = opts },
+        Controller.CONTRACT.query.in_
+    )
+
+    Diagnostic.scope_enter("io.controller.query")
+    Diagnostic.debug("query.path", path)
+
+    local result, err = Query.query(path)
+
+    if not result then
+        Diagnostic.user_message(err or "query failed", "error")
+        local scope = Diagnostic.scope_leave()
+        Trace.contract_leave()
+
+        if include_diag then
+            return nil, err, scope
+        end
+
+        return nil, err
+    end
+
+    Trace.contract_out(result, "query", "caller")
+    Contract.assert(result, Controller.CONTRACT.query.out)
+
+    local scope = Diagnostic.scope_leave()
+    Trace.contract_leave()
+
+    if include_diag then
+        return result, nil, scope
+    end
+
+    return result
+end
+
+----------------------------------------------------------------
 -- STRICT variants
 ----------------------------------------------------------------
 
@@ -238,6 +302,18 @@ function Controller.write_strict(path, payload, opts)
         error(err, 2)
     end
     return meta
+end
+
+----------------------------------------------------------------
+-- STRICT Query
+----------------------------------------------------------------
+
+function Controller.query_strict(path, opts)
+    local result, err = Controller.query(path, opts)
+    if not result then
+        error(err, 2)
+    end
+    return result
 end
 
 ----------------------------------------------------------------

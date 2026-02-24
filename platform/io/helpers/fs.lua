@@ -41,6 +41,31 @@ function FS.get_filename(path)
 end
 
 ----------------------------------------------------------------
+-- Path join
+----------------------------------------------------------------
+
+--- Join path segments safely.
+--- Ensures exactly one separator between parts.
+---
+---@param a string
+---@param b string
+---@return string
+function FS.join(a, b)
+    if not a or a == "" then
+        return b
+    end
+
+    if not b or b == "" then
+        return a
+    end
+
+    local a_trimmed = a:gsub("[/\\]+$", "")
+    local b_trimmed = b:gsub("^[/\\]+", "")
+
+    return a_trimmed .. "/" .. b_trimmed
+end
+
+----------------------------------------------------------------
 -- Existence / directory helpers
 ----------------------------------------------------------------
 
