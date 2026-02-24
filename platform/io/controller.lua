@@ -1,4 +1,4 @@
--- io/controller.lua
+-- platform/io/controller.lua
 --
 -- Public IO control surface.
 -- Pure IO: no formatting, no normalization, no semantic helpers.

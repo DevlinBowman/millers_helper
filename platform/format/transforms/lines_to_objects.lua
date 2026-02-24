@@ -18,6 +18,7 @@ function M.run(lines)
 
     -- Delegate structural extraction to parser
     local parsed, err = Parsers.parse_text(lines)
+    -- ???
     if not parsed then
         return nil, err or "text parser failed"
     end

@@ -80,22 +80,16 @@ function Compress.run(classified_rows, identity_key, opts)
 
     local Util = Registry.util
 
-    ----------------------------------------------------------------
-    -- Phase 1: Partition rows by identity
-    --
-    -- We split rows into:
-    --   • rows_by_identity[id]
-    --   • rows_without_identity
-    --
-    -- Identity normalization is applied here to ensure consistent grouping.
-    ----------------------------------------------------------------
-
     local rows_by_identity      = {}
     local rows_without_identity = {}
     local identity_set          = {}
 
+    ------------------------------------------------------------
+    -- Partition rows by identity
+    ------------------------------------------------------------
+
     for _, row in ipairs(classified_rows) do
-        local order_part  = row.order or {}
+        local order_part   = row.order or {}
         local raw_identity = order_part[identity_key]
         local identity     = Util.normalize_identity(raw_identity)
 
@@ -114,33 +108,21 @@ function Compress.run(classified_rows, identity_key, opts)
         end
     end
 
-    ----------------------------------------------------------------
-    -- Phase 2: Collect distinct identities (stable order)
-    --
-    -- Sorting ensures deterministic output order regardless
-    -- of input ordering.
-    ----------------------------------------------------------------
-
     local distinct = {}
     for id in pairs(identity_set) do
         distinct[#distinct + 1] = id
     end
     table.sort(distinct)
 
-    ----------------------------------------------------------------
-    -- Case 1:
-    -- No identity found anywhere.
-    --
-    -- Interpretation:
-    --   The entire input represents a single implicit order.
-    --
-    -- Behavior:
-    --   Treat all rows as one group and let resolve_group
-    --   reconcile distributed order fragments.
-    ----------------------------------------------------------------
+    ------------------------------------------------------------
+    -- Case 1: No identity anywhere
+    ------------------------------------------------------------
 
     if #distinct == 0 then
-        local resolved = ResolveGroup.run(classified_rows, opts)
+        local resolved, resolve_err = ResolveGroup.run(classified_rows, opts)
+        if not resolved then
+            return nil, resolve_err
+        end
 
         return {
             {
@@ -152,24 +134,12 @@ function Compress.run(classified_rows, identity_key, opts)
         }
     end
 
-    ----------------------------------------------------------------
-    -- Case 2:
-    -- Exactly one identity present.
-    --
-    -- Interpretation:
-    --   Some rows explicitly declare identity,
-    --   others omit it.
-    --
-    -- Assumption:
-    --   Identity-less rows implicitly belong to that single order.
-    --
-    -- Behavior:
-    --   Merge identity-less rows into the single identity bucket.
-    ----------------------------------------------------------------
+    ------------------------------------------------------------
+    -- Case 2: Single identity
+    ------------------------------------------------------------
 
     if #distinct == 1 then
         local id = distinct[1]
-
         local combined_rows = {}
 
         for _, row in ipairs(rows_by_identity[id] or {}) do
@@ -180,7 +150,10 @@ function Compress.run(classified_rows, identity_key, opts)
             combined_rows[#combined_rows + 1] = row
         end
 
-        local resolved = ResolveGroup.run(combined_rows, opts)
+        local resolved, resolve_err = ResolveGroup.run(combined_rows, opts)
+        if not resolved then
+            return nil, resolve_err
+        end
 
         return {
             {
@@ -192,45 +165,32 @@ function Compress.run(classified_rows, identity_key, opts)
         }
     end
 
-    ----------------------------------------------------------------
-    -- Case 3:
-    -- Multiple identities present AND some rows lack identity.
-    --
-    -- This is structurally ambiguous:
-    --
-    --   Example:
-    --     Order A rows
-    --     Order B rows
-    --     Rows with no identity
-    --
-    -- We cannot deterministically assign identity-less rows.
-    --
-    -- Therefore this is a hard structural error.
-    ----------------------------------------------------------------
+    ------------------------------------------------------------
+    -- Case 3: Multiple identities + identity-less rows
+    ------------------------------------------------------------
 
     if #rows_without_identity > 0 then
-        error(
-            "ambiguous order compression: multiple identities present " ..
-            "and some rows lack identity. Cannot determine grouping."
-        )
+        return nil, {
+            kind    = "ambiguous_order_compression",
+            stage   = "compress",
+            message = "Multiple order identities present and some rows lack identity.",
+            count_without_identity = #rows_without_identity,
+        }
     end
 
-    ----------------------------------------------------------------
-    -- Case 4:
-    -- Multiple identities present.
-    --
-    -- Interpretation:
-    --   Input contains multiple distinct orders.
-    --
-    -- Behavior:
-    --   Create one resolved group per identity.
-    ----------------------------------------------------------------
+    ------------------------------------------------------------
+    -- Case 4: Multiple identities
+    ------------------------------------------------------------
 
     local results = {}
 
     for _, id in ipairs(distinct) do
         local group_rows = rows_by_identity[id] or {}
-        local resolved   = ResolveGroup.run(group_rows, opts)
+
+        local resolved, resolve_err = ResolveGroup.run(group_rows, opts)
+        if not resolved then
+            return nil, resolve_err
+        end
 
         results[#results + 1] = {
             order     = resolved.order,

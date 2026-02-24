@@ -65,21 +65,27 @@ function Controller.resolve_group(rows, opts)
         assert(type(opts) == "table", "order_context.resolve_group(): opts must be table|nil")
     end
 
-    -- Run inside diagnostic scope
     local ok, pipeline_result, scope =
         Diagnostic.with_scope("order_context.resolve_group", function()
             return ResolveGroupPipeline.run(rows, opts)
         end)
 
     if not ok then
+        -- programmer bug inside pipeline
         error(pipeline_result)
     end
 
-    -- HARD GATE
-    assert(type(pipeline_result) == "table", "resolve_group(): pipeline must return table")
+    if not pipeline_result then
+        Trace.contract_leave()
+        return nil, scope or {
+            kind = "order_context_resolve_failure"
+        }
+    end
 
     local order = pipeline_result.order
-    assert(type(order) == "table", "resolve_group(): missing canonical order")
+    if type(order) ~= "table" then
+        error("resolve_group(): missing canonical order")
+    end
 
     local result = { order = order }
 
@@ -112,7 +118,12 @@ function Controller.compress(rows, identity_key, opts)
         assert(type(opts) == "table", "order_context.compress(): opts must be table|nil")
     end
 
-    local groups = CompressPipeline.run(rows, identity_key, opts)
+    local groups, compress_err = CompressPipeline.run(rows, identity_key, opts)
+
+    if not groups then
+        Trace.contract_leave()
+        return nil, compress_err
+    end
 
     local result = { groups = groups }
 

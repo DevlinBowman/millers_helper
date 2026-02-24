@@ -1,4 +1,4 @@
--- io/fs.lua
+-- platform/io/helpers/fs.lua
 --
 -- Filesystem helpers.
 -- Thin, synchronous wrappers around Lua + OS primitives.
@@ -77,6 +77,38 @@ function FS.list_dir(path)
 
     handle:close()
     return files
+end
+
+----------------------------------------------------------------
+-- Directory enumeration (core primitive)
+----------------------------------------------------------------
+
+--- List all entries (files + directories) inside a directory.
+--- Returns entry names (not full paths).
+--- Does NOT recurse.
+---
+---@param path string
+---@return string[]|nil entries
+---@return string|nil err
+function FS.list_entries(path)
+    if not FS.is_dir(path) then
+        return nil, "not a directory: " .. tostring(path)
+    end
+
+    local entries = {}
+    local handle = io.popen(string.format('ls -A %q', path))
+    if not handle then
+        return nil, "failed to list directory"
+    end
+
+    for name in handle:lines() do
+        if name ~= "." and name ~= ".." then
+            entries[#entries + 1] = name
+        end
+    end
+
+    handle:close()
+    return entries
 end
 
 --- Check whether a file exists and is not a directory.

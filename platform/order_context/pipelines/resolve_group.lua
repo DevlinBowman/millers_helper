@@ -1,4 +1,4 @@
--- order_context/pipelines/resolve_group.lua
+-- platform/order_context/pipelines/resolve_group.lua
 --
 -- Resolve one order group into a coherent order context.
 --
@@ -59,27 +59,15 @@ function ResolveGroup.run(rows, opts)
     local signals        = {}
     local decisions      = {}
 
-    ----------------------------------------------------------------
-    -- Phase 1: Collect all order fields present in this group
-    --
-    -- classify already partitioned row.order fragments.
-    -- We now determine which canonical order fields exist at all.
-    ----------------------------------------------------------------
+    ------------------------------------------------------------
+    -- Phase 1: Collect order fields
+    ------------------------------------------------------------
 
     local fields = Util.collect_order_fields(rows)
 
-    ----------------------------------------------------------------
-    -- Phase 2: SPEC ALIGNMENT GUARD
-    --
-    -- If a field exists in classification output but has no
-    -- declared reconciliation policy in order_context.spec,
-    -- then classification and reconciliation schemas are misaligned.
-    --
-    -- We warn explicitly so architectural drift is visible.
-    --
-    -- Fallback behavior still defaults to Spec.default (strict),
-    -- but this signal makes the misconfiguration observable.
-    ----------------------------------------------------------------
+    ------------------------------------------------------------
+    -- Phase 2: Spec alignment guard
+    ------------------------------------------------------------
 
     for _, field in ipairs(fields) do
         if Spec.fields[field] == nil then
@@ -90,50 +78,34 @@ function ResolveGroup.run(rows, opts)
                 values     = {},
                 resolution = "implicit_strict",
                 message    = (
-                    "order field '%s' was produced by classification and assigned " ..
-                    "to the ORDER domain, but no reconciliation policy exists in " ..
-                    "order_context.spec. This indicates schema misalignment: " ..
-                    "'%s' is recognized during classification but has no declared " ..
-                    "conflict behavior during order resolution. " ..
-                    "Please update order_context.internal.spec to declare a policy " ..
-                    "for '%s', or revise classify.internal.schema if this field " ..
-                    "should not belong to the ORDER domain."
-                ):format(field, field, field),
+                    "order field '%s' produced by classification has no declared reconciliation policy."
+                ):format(field),
             })
         end
     end
 
-    ----------------------------------------------------------------
-    -- Phase 3: Field-by-field reconciliation
-    --
-    -- For each canonical order field:
-    --   1. Normalize values if required
-    --   2. Collect distinct values across rows
-    --   3. Apply policy decision
-    --   4. Mutate resolved_order accordingly
-    ----------------------------------------------------------------
+    ------------------------------------------------------------
+    -- Phase 3: Field reconciliation
+    ------------------------------------------------------------
 
     for _, field in ipairs(fields) do
         local field_spec = Spec.fields[field] or Spec.default
 
-        -- Optional normalization (e.g., date formatting)
         local normalizer = nil
         if field_spec.normalize then
             normalizer = Util[field_spec.normalize]
         end
 
-        -- Collect distinct values after optional normalization
         local values = Util.collect_order_field_values(rows, field, normalizer)
 
-        ------------------------------------------------------------
-        -- Case A: Field present but all values empty → ignore
-        ------------------------------------------------------------
+        --------------------------------------------------------
+        -- No usable values
+        --------------------------------------------------------
         if #values == 0 then
-            -- No usable values for this field in this group.
 
-        ------------------------------------------------------------
-        -- Case B: Exactly one distinct value → deterministic keep
-        ------------------------------------------------------------
+        --------------------------------------------------------
+        -- Single value
+        --------------------------------------------------------
         elseif #values == 1 then
             resolved_order[field] = values[1]
             decisions[field] = {
@@ -141,9 +113,9 @@ function ResolveGroup.run(rows, opts)
                 value  = values[1],
             }
 
-        ------------------------------------------------------------
-        -- Case C: Multiple distinct values → delegate to Policy
-        ------------------------------------------------------------
+        --------------------------------------------------------
+        -- Multiple distinct values
+        --------------------------------------------------------
         else
             local decision = Policy.decide(field, values, rows, opts)
 
@@ -152,27 +124,30 @@ function ResolveGroup.run(rows, opts)
                 values = values,
             }
 
-            -- Collect signal if policy emitted one
             if decision.signal then
                 signals[#signals + 1] = decision.signal
             end
 
-            --------------------------------------------------------
-            -- Interpret decision.action
-            --------------------------------------------------------
+            ----------------------------------------------------
+            -- Interpret decision
+            ----------------------------------------------------
 
             if decision.action == "error" then
-                -- Hard structural violation.
-                -- Order group cannot be reconciled.
-                error(
-                    decision.signal and decision.signal.message
-                    or ("order_context conflict on field: " .. tostring(field))
-                )
+                -- USER DATA CONFLICT
+                -- Return structured failure instead of crashing
+                return nil, {
+                    kind    = "order_field_conflict",
+                    stage   = "order_context_resolve",
+                    field   = field,
+                    values  = values,
+                    message = decision.signal and decision.signal.message
+                        or ("Conflicting order field '%s' with multiple distinct values."):format(field),
+                    signals = signals,
+                    decisions = decisions,
+                }
 
             elseif decision.action == "defer_recalc_drop_field" then
-                -- Field intentionally omitted.
-                -- Downstream builder expected to recompute.
-                -- No mutation here.
+                -- intentional drop
 
             elseif decision.action == "keep_first" then
                 resolved_order[field] = values[1]
@@ -181,9 +156,10 @@ function ResolveGroup.run(rows, opts)
                 resolved_order[field] = values[1]
 
             elseif decision.action == "drop" then
-                -- Explicit drop. Field omitted intentionally.
+                -- explicit drop
 
             else
+                -- This is a programmer bug, not user input
                 error(
                     "order_context: unknown decision action: " ..
                     tostring(decision.action)
@@ -192,13 +168,9 @@ function ResolveGroup.run(rows, opts)
         end
     end
 
-    ----------------------------------------------------------------
-    -- Final Output
-    --
-    -- resolved_order contains only fields that survived policy.
-    -- signals describe reconciliation events.
-    -- decisions provide introspection into what happened.
-    ----------------------------------------------------------------
+    ------------------------------------------------------------
+    -- Success
+    ------------------------------------------------------------
 
     return {
         order     = resolved_order,

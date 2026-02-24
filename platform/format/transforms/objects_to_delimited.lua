@@ -1,4 +1,4 @@
--- format/transforms/delimited_to_table.lua
+-- platform/format/transforms/delimited_to_table.lua
 
 local Shape = require("platform.format.validate.shape")
 

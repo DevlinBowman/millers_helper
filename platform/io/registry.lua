@@ -1,4 +1,4 @@
--- io/registry.lua
+-- platform/io/registry.lua
 
 local Registry = {}
 

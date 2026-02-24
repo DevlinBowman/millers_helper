@@ -1,4 +1,4 @@
--- pipelines/ingestion/ingest.lua
+-- platform/pipelines/ingestion/ingest.lua
 --
 -- Cross-domain ingestion pipeline.
 --
@@ -6,6 +6,7 @@
 --   IO → Decode → Parse → Classify → OrderContext.compress → Build
 --
 -- Compression now handled by order_context module.
+
 
 local IO           = require("platform.io.controller")
 local Format       = require("platform.format").controller
@@ -54,44 +55,9 @@ local function classify_inbound_objects(objects)
 end
 
 ----------------------------------------------------------------
--- Build (Flattened)
-----------------------------------------------------------------
-
-local function build_items(groups)
-    local items = {}
-
-    for _, group in ipairs(groups or {}) do
-        --------------------------------------------------------
-        -- Build Order (once per group)
-        --------------------------------------------------------
-        local order_result = OrderModel.build(group.order or {})
-        local built_order  = order_result.order
-
-        --------------------------------------------------------
-        -- Build Boards (one item per board)
-        --------------------------------------------------------
-        for _, board_spec in ipairs(group.boards or {}) do
-            local board_result = BoardModel.build(board_spec)
-
-            if board_result.board then
-                items[#items + 1] = {
-                    order = built_order,
-                    board = board_result.board,
-                }
-            end
-        end
-    end
-
-    return items
-end
-
-----------------------------------------------------------------
 -- Build Order Batches
 ----------------------------------------------------------------
 
--- pipelines/ingestion/ingest.lua
---
--- replace function build_batches(groups)
 
 local function build_batches(groups)
     local batches = {}
@@ -170,126 +136,162 @@ function Ingest.read(path, opts)
     Trace.contract_in({ path = path, opts = opts })
     Contract.assert({ path = path, opts = opts }, Ingest.CONTRACT.read.in_)
 
-    local ok, result_or_err = pcall(function()
-        opts = opts or {}
-        local stop_at = opts.stop_at
+    opts = opts or {}
+    local stop_at = opts.stop_at
 
+    --------------------------------------------------------
+    -- IO
+    --------------------------------------------------------
+    local raw, io_err = IO.read(path)
 
-        --------------------------------------------------------
-        -- IO
-        --------------------------------------------------------
-        local raw, io_err = IO.read(path)
-
-        if not raw then
-            error(("IO.read failed for path '%s': %s")
-                :format(tostring(path), tostring(io_err)), 0)
-        end
-
-        local io_meta = raw.meta and raw.meta.io or {}
-
-        if stop_at == "io" then
-            Trace.contract_out(raw, "io.controller.read", "caller")
-            return raw
-        end
-
-        --------------------------------------------------------
-        -- Decode
-        --------------------------------------------------------
-        local decoded = Format.decode(raw.codec, raw.data)
-
-        if stop_at == "decode" then
-            local env = build_envelope(decoded.data, io_meta, "decode", {
-                transport_codec = raw.codec
-            })
-            Trace.contract_out(env, "format.controller.decode", "caller")
-            return env
-        end
-
-        --------------------------------------------------------
-        -- Parse
-        --------------------------------------------------------
-        local objects
-
-        if decoded.codec == "lines" then
-            local parsed = Parsers.parse_text(decoded.data)
-            assert(parsed and parsed.data, "parser returned invalid shape")
-            objects = parsed.data
-        else
-            objects = decoded.data
-        end
-
-        if stop_at == "parse" then
-            local env = build_envelope(objects, io_meta, "parse", {
-                transport_codec = raw.codec
-            })
-            Trace.contract_out(env, "parsers.controller.parse_text", "caller")
-            return env
-        end
-
-        --------------------------------------------------------
-        -- Classify
-        --------------------------------------------------------
-        local classified = classify_inbound_objects(objects)
-
-        if stop_at == "classify" then
-            local env = build_envelope(classified, io_meta, "classify")
-            Trace.contract_out(env, "classify.controller.object", "caller")
-            return env
-        end
-
-        --------------------------------------------------------
-        -- OrderContext Compress (group + reconcile)
-        --------------------------------------------------------
-        local identity_key = "order_number"
-
-        local compress_result =
-            OrderContext.compress(classified, identity_key, opts.order_context)
-
-        local groups = compress_result.groups
-
-        if stop_at == "compress" then
-            local env = build_envelope(groups, io_meta, "compress", {
-                identity_key = identity_key,
-                shape        = "order_groups",
-            })
-            Trace.contract_out(env, "order_context.controller.compress", "caller")
-            return env
-        end
-
-        --------------------------------------------------------
-        -- Build Models (Flattened)
-        --------------------------------------------------------
-        -- local built = build_items(groups)
-        local built = build_batches(groups)
-
-        if stop_at == "build" then
-            local env = build_envelope(built, io_meta, "build", {
-                identity_key = identity_key,
-            })
-            Trace.contract_out(env, "core.model.*.controller.build", "caller")
-            return env
-        end
-
-        --------------------------------------------------------
-        -- Final
-        --------------------------------------------------------
-        local final_env = build_envelope(built, io_meta, "done", {
-            identity_key = identity_key,
-        })
-
-        Contract.assert(final_env, Ingest.CONTRACT.read.out)
-
-        Trace.contract_out(final_env, "platform.pipelines.ingestion.ingest.read", "caller")
-        return final_env
-    end)
-
-    Trace.contract_leave()
-
-    if not ok then
-        error(result_or_err, 0)
+    if not raw then
+        Trace.contract_leave()
+        return nil, {
+            kind  = "io_failure",
+            stage = "io",
+            path  = path,
+            error = io_err,
+        }
     end
 
-    return result_or_err
+    local io_meta = raw.meta and raw.meta.io or {}
+
+    if stop_at == "io" then
+        Trace.contract_out(raw, "io.controller.read", "caller")
+        Trace.contract_leave()
+        return raw
+    end
+
+    --------------------------------------------------------
+    -- Decode (includes ParserGate)
+    --------------------------------------------------------
+    local decoded, decode_err = Format.decode(raw.codec, raw.data)
+
+    if not decoded then
+        Trace.contract_leave()
+        return nil, {
+            kind  = "input_validation_failure",
+            stage = "decode",
+            path  = path,
+            error = decode_err,
+            meta  = { io = io_meta },
+        }
+    end
+
+    if stop_at == "decode" then
+        local env = build_envelope(decoded.data, io_meta, "decode", {
+            transport_codec = raw.codec
+        })
+        Trace.contract_out(env, "format.controller.decode", "caller")
+        Trace.contract_leave()
+        return env
+    end
+
+    --------------------------------------------------------
+    -- Extract Objects
+    --------------------------------------------------------
+    local objects = decoded.data
+
+    if type(objects) ~= "table" then
+        Trace.contract_leave()
+        return nil, {
+            kind  = "decode_shape_error",
+            stage = "decode",
+            path  = path,
+            error = "decoded objects missing or invalid",
+            meta  = { io = io_meta },
+        }
+    end
+
+    if stop_at == "parse" then
+        local env = build_envelope(objects, io_meta, "parse", {
+            transport_codec = raw.codec
+        })
+        Trace.contract_out(env, "parsers.controller.parse_text", "caller")
+        Trace.contract_leave()
+        return env
+    end
+
+    --------------------------------------------------------
+    -- Classify
+    --------------------------------------------------------
+    local classified = classify_inbound_objects(objects)
+
+    if stop_at == "classify" then
+        local env = build_envelope(classified, io_meta, "classify")
+        Trace.contract_out(env, "classify.controller.object", "caller")
+        Trace.contract_leave()
+        return env
+    end
+
+    --------------------------------------------------------
+    -- OrderContext Compress
+    --------------------------------------------------------
+    local identity_key = "order_number"
+
+    local compress_result, compress_err =
+        OrderContext.compress(classified, identity_key, opts.order_context)
+
+    if not compress_result then
+        Trace.contract_leave()
+        return nil, {
+            kind  = "order_context_failure",
+            stage = "compress",
+            path  = path,
+            error = compress_err,
+            meta  = { io = io_meta },
+        }
+    end
+
+    local groups = compress_result.groups
+
+    if type(groups) ~= "table" then
+        Trace.contract_leave()
+        return nil, {
+            kind  = "order_context_shape_error",
+            stage = "compress",
+            path  = path,
+            error = "compress returned invalid groups",
+            meta  = { io = io_meta },
+        }
+    end
+
+    if stop_at == "compress" then
+        local env = build_envelope(groups, io_meta, "compress", {
+            identity_key = identity_key,
+            shape        = "order_groups",
+        })
+        Trace.contract_out(env, "order_context.controller.compress", "caller")
+        Trace.contract_leave()
+        return env
+    end
+
+    --------------------------------------------------------
+    -- Build Canonical Batches
+    --------------------------------------------------------
+    local built = build_batches(groups)
+
+    if stop_at == "build" then
+        local env = build_envelope(built, io_meta, "build", {
+            identity_key = identity_key,
+        })
+        Trace.contract_out(env, "core.model.*.controller.build", "caller")
+        Trace.contract_leave()
+        return env
+    end
+
+    --------------------------------------------------------
+    -- Final Envelope
+    --------------------------------------------------------
+    local final_env = build_envelope(built, io_meta, "done", {
+        identity_key = identity_key,
+    })
+
+    Contract.assert(final_env, Ingest.CONTRACT.read.out)
+    Trace.contract_out(final_env, "platform.pipelines.ingestion.ingest.read", "caller")
+    Trace.contract_leave()
+
+    return final_env
 end
 
 return Ingest
