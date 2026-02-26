@@ -146,8 +146,45 @@ app:fs()
     ::ensure_instance_layout()
     ::inspect()
 
-    ::vendor_store()
-    ::ledger_store()
-    ::
+    ::ledger_store() -- app/<instance>/ledgers
+    ::client_store() -- app/<instance>/clients
+    ::export_store() -- app/<instance>/exports
+    ::vendor_store() -- app/<instance>/system/caches/vendor
+    ::system_store() -- app/<instance>/
+        ::sessions() --<< state stapshots (usually last_session.json)
+        ::runtime_ids() --<< count keepers for enumeration
+        ::presets() i--<< core/model/... presets for 
+
+
+        ::query()
+        -
+        -
+        -
 
 ```
+
+
+fs_registry
+
+./data/app/
+
+./data/app/<session>/ledger/ [files:: <filename>.ledger.lua]
+./data/app/<session>/ledger/txn/
+./data/app/<session>/ledger/txn/data/ [files:: [order|boards|alloc|other].lua]
+./data/app/<session>/ledger/txn/attachemnts/ [files:: [quote|invoice|compare|other].*]
+
+
+./data/app/<session>/client/
+./data/app/<session>/client/
+./data/app/<session>
+./data/app/<session>
+./data/app/<session>
+./data/app/<session>
+./data/app/<session>
+./data/app/<session>
+./data/app/<session>
+./data/app/<session>
+./data/app/<session>
+./data/app/<session>
+./data/app/<session>
+./data/app/<session>
