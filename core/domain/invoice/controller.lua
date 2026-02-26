@@ -1,18 +1,69 @@
+-- core/domain/invoice/controller.lua
+--
+-- Invoice Domain Controller
+--
+-- Provides:
+--   run_raw(batch)    -> InvoiceDTO
+--   run(batch)        -> InvoiceResult
+--   run_strict(batch) -> InvoiceResult (throws)
+--
+-- Responsibility:
+--   • Validate input
+--   • Call pipeline
+--   • Wrap DTO in Result
+--   • Enforce strict policy
+
 local Registry = require("core.domain.invoice.registry")
-local Format   = require("core.domain._priced_doc.internal.format_text")
+local Result   = require("core.domain.invoice.result")
 
 local Controller = {}
 
-function Controller.run(batch)
+----------------------------------------------------------------
+-- RAW ENTRY (Structure Layer)
+----------------------------------------------------------------
+
+---@param batch table
+---@param opts table|nil { id?:string }
+---@return table|nil, string|nil
+function Controller.run_raw(batch, opts)
     Registry.schema.validate(batch)
 
-    local model = Registry.pipeline.run(batch)
+    opts = opts or {}
 
-    return model
+    return Registry.pipeline.run({
+        id             = opts.id,
+        boards         = batch.boards,
+        order          = batch.order,
+        transaction_id = batch.transaction_id,
+    })
 end
 
-function Controller.render_text(model)
-    return Format.render(model)
+----------------------------------------------------------------
+-- FAÇADE ENTRY (Meaning Layer)
+----------------------------------------------------------------
+
+---@param batch table
+---@param opts table|nil
+---@return InvoiceResult|nil, string|nil
+function Controller.run(batch, opts)
+    local dto, err = Controller.run_raw(batch, opts)
+    if not dto then
+        return nil, err
+    end
+
+    return Result.new(dto)
+end
+
+----------------------------------------------------------------
+-- STRICT ENTRY (Policy Layer)
+----------------------------------------------------------------
+
+---@param batch table
+---@param opts table|nil
+---@return InvoiceResult
+function Controller.run_strict(batch, opts)
+    local result = Controller.run(batch, opts)
+    return result:require_priced()
 end
 
 return Controller

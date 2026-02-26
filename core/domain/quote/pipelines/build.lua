@@ -1,24 +1,19 @@
-local DocBuild = require("core.domain._priced_doc.internal.build")
-local IDStore  = require("system.infrastructure.id_store")
+local DocBuild = require("core.domain._priced_doc.build")
+local Document = require("core.domain._priced_doc.document")
 
 local Build = {}
 
-function Build.run(boards)
+function Build.run(args)
+    assert(type(args) == "table", "quote.build requires args table")
+    assert(type(args.boards) == "table", "quote.build requires boards")
 
-    -- Optional lightweight validation (no signal system)
-    for _, board in ipairs(boards) do
-        if board.bf_price == nil then
-            -- silent tolerance
-            -- or print warning if you want:
-            print("[quote] missing price for board:", board.id)
-        end
-    end
-
-    return DocBuild.run({
-        id     = IDStore.next("quote", "QUOTE"),
-        boards = boards,
+    local dto = DocBuild.run({
+        id     = args.id,
+        boards = args.boards,
         header = { document_type = "QUOTE" }
     })
+
+    return Document.new(dto)
 end
 
 return Build

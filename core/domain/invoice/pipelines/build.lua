@@ -1,31 +1,38 @@
-local DocBuild = require("core.domain._priced_doc.internal.build")
-local ID       = require("system.infrastructure.id_store")
+local DocBuild = require("core.domain._priced_doc.build")
 
 local Build = {}
 
 local function enforce_prices(boards)
-    for _, board in ipairs(boards) do
+    for _, board in ipairs(boards or {}) do
         if board.bf_price == nil then
-            error("Invoice requires priced boards: " .. tostring(board.id or ""))
+            error(
+                "Invoice requires priced boards: " ..
+                tostring(board.id or board.label or "?"),
+                2
+            )
         end
     end
 end
 
-function Build.run(batch)
-    enforce_prices(batch.boards)
+function Build.run(args)
+    assert(type(args) == "table", "invoice.build requires args table")
+    assert(type(args.boards) == "table", "invoice.build requires boards")
+    assert(type(args.order) == "table", "invoice.build requires order")
+
+    enforce_prices(args.boards)
 
     return DocBuild.run({
-        id     = ID.new(),
-        boards = batch.boards,
+        id     = args.id,  -- optional
+        boards = args.boards,
         header = {
             document_type  = "INVOICE",
-            order_number   = batch.order.order_number,
-            client         = batch.order.client,
-            claimant       = batch.order.claimant,
-            date           = batch.order.date,
-            status         = batch.order.order_status,
-            use            = batch.order.use,
-            transaction_id = batch.transaction_id,
+            order_number   = args.order.order_number,
+            client         = args.order.client,
+            claimant       = args.order.claimant,
+            date           = args.order.date,
+            status         = args.order.order_status,
+            use            = args.order.use,
+            transaction_id = args.transaction_id,
         }
     })
 end

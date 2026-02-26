@@ -1,27 +1,11 @@
 -- core/domain/runtime/pipelines/load.lua
 --
 -- Single entrypoint loader.
---
--- Usage:
---     local load = require("pipelines.runtime.load")
---     local batches = load(inputs)
---
--- Always returns:
---     { { order=table, boards=table[] }[] }
---
--- Routing Rules:
---     string                      -> Ingest.read(path)
---     { path=... }                -> Ingest.read
---     { order_path=..., boards_path=... }
---                                   -> Bundle.load
---     envelope (codec=lua_object) -> normalized directly
---
--- Output is ALWAYS canonical batches.
--- No envelope leakage.
+-- Always returns canonical RuntimeBatch[] OR raises a useful error.
 
-local Ingest  = require("platform.pipelines.ingestion.ingest")
-local Ledger  = require("core.domain.ledger.controller")
-local IO      = require('platform.io.controller')
+local Ingest = require("platform.pipelines.ingestion.ingest")
+local Ledger = require("core.domain.ledger.controller")
+local IO     = require("platform.io.controller")
 
 ----------------------------------------------------------------
 -- Utility: identify canonical batch shape
@@ -34,12 +18,85 @@ local function is_batch(v)
 end
 
 ----------------------------------------------------------------
+-- Error formatting (structured, deterministic)
+----------------------------------------------------------------
+
+local function format_err(err, depth)
+    depth = depth or 0
+
+    if err == nil then
+        return "unknown error"
+    end
+
+    if type(err) == "string" then
+        return err
+    end
+
+    if type(err) ~= "table" then
+        return tostring(err)
+    end
+
+    local lines = {}
+
+    local indent = string.rep("  ", depth)
+
+    if err.kind then
+        lines[#lines+1] = indent .. "kind: " .. tostring(err.kind)
+    end
+
+    if err.stage then
+        lines[#lines+1] = indent .. "stage: " .. tostring(err.stage)
+    end
+
+    if err.field then
+        lines[#lines+1] = indent .. "field: " .. tostring(err.field)
+    end
+
+    if err.message then
+        lines[#lines+1] = indent .. "message: " .. tostring(err.message)
+    end
+
+    if err.values then
+        lines[#lines+1] = indent .. "values:"
+        for _, v in ipairs(err.values) do
+            lines[#lines+1] = indent .. "  - " .. tostring(v)
+        end
+    end
+
+    if err.errors and type(err.errors) == "table" then
+        lines[#lines+1] = indent .. "errors:"
+        for _, e in ipairs(err.errors) do
+            lines[#lines+1] = format_err(e, depth + 1)
+        end
+    end
+
+    if err.error and type(err.error) == "table" then
+        lines[#lines+1] = indent .. "caused_by:"
+        lines[#lines+1] = format_err(err.error, depth + 1)
+    end
+
+    return table.concat(lines, "\n")
+end
+
+----------------------------------------------------------------
 -- Normalize any supported env into canonical batches
 ----------------------------------------------------------------
 
+-- core/domain/runtime/pipelines/load.lua
+-- function normalize(env)
+
 local function normalize(env)
     if type(env) ~= "table" then
-        error("load(): invalid env type", 0)
+        return nil, {
+            kind    = "runtime_normalize_failure",
+            stage   = "normalize",
+            message = "invalid env type",
+        }
+    end
+
+    -- IMPORTANT: propagate structured upstream error (do not stringify/throw)
+    if env.ok == false then
+        return nil, env
     end
 
     -- Envelope unwrap
@@ -51,24 +108,28 @@ local function normalize(env)
     -- Single batch
     if is_batch(env) then
         print("[load] detected single batch -> wrapping into array")
-        return { env }
+        return { env }, nil
     end
 
     -- Batch array
-    if type(env) == "table"
-        and #env > 0
-        and is_batch(env[1])
-    then
+    if type(env) == "table" and #env > 0 and is_batch(env[1]) then
         print(string.format("[load] detected %d batch(es)", #env))
-        return env
+        return env, nil
     end
 
-    error("load(): unable to normalize to canonical batches", 0)
+    return nil, {
+        kind    = "runtime_normalize_failure",
+        stage   = "normalize",
+        message = "unable to normalize to canonical batches",
+    }
 end
 
 ----------------------------------------------------------------
 -- Routing Decision
 ----------------------------------------------------------------
+
+-- core/domain/runtime/pipelines/load.lua
+-- function route(input)
 
 local function route(input)
     local env, err
@@ -93,68 +154,64 @@ local function route(input)
         env, err = Ingest.read(input.path, input.opts)
     end
 
-
     ------------------------------------------------------------
-    -- Ledger index file (.lua source)
+    -- Ledger index file
     ------------------------------------------------------------
     if not env and type(input) == "table" and input.ledger_path then
         print("[load] route: ledger index file")
         print("[load]   ledger_path -> " .. tostring(input.ledger_path))
 
-        --------------------------------------------------------
-        -- Read ledger index file directly
-        --------------------------------------------------------
-        local result = IO.read_strict(input.ledger_path)
+        local result, io_err = IO.read_strict(input.ledger_path)
 
         if not result or type(result.data) ~= "table" then
-            error("[load] invalid ledger index file", 0)
+            return nil, {
+                kind  = "ledger_load_failure",
+                stage = "route",
+                path  = input.ledger_path,
+                error = io_err or "invalid ledger index file"
+            }
         end
 
         local index = result.data
         local batches = {}
 
-        print("[load]   rehydrating bundles via controller...")
-
         for _, entry in ipairs(index) do
-            local bundle =
-                Ledger.read_bundle(entry.transaction_id)
-
+            local bundle = Ledger.read_bundle(entry.transaction_id)
             batches[#batches + 1] = {
                 order  = bundle.order,
                 boards = bundle.boards,
             }
         end
 
-        print(string.format(
-            "[load]   rehydrated %d transaction(s)",
-            #batches
-        ))
-
-        env = {
-            codec = "lua_object",
-            data  = batches,
-        }
+        env = { codec = "lua_object", data = batches }
     end
-
 
     ------------------------------------------------------------
     -- Already envelope
     ------------------------------------------------------------
-    if not env and type(input) == "table"
-        and input.codec == "lua_object"
-    then
+    if not env and type(input) == "table" and input.codec == "lua_object" then
         print("[load] route: already lua_object envelope")
         env = input
     end
 
     ------------------------------------------------------------
-    -- Failure Handling
+    -- IMPORTANT: Treat structured failure env as failure
+    ------------------------------------------------------------
+    if type(env) == "table" and env.ok == false then
+        -- This is an upstream failure envelope (ex: ingest/decode/parser gate)
+        -- Return it as route_err so caller preserves structure.
+        return nil, env
+    end
+
+    ------------------------------------------------------------
+    -- Failure
     ------------------------------------------------------------
     if not env then
-        if err then
-            error("[load] FAILED -> " .. tostring(err), 0)
-        end
-        error("[load] unsupported input type", 0)
+        return nil, err or {
+            kind    = "unsupported_input_type",
+            stage   = "route",
+            message = "Unsupported runtime input"
+        }
     end
 
     return env
@@ -164,16 +221,34 @@ end
 -- Public Loader (callable module)
 ----------------------------------------------------------------
 
--- core/domain/runtime/pipelines/load.lua
-
 local LoadPipeline = {}
+
+-- core/domain/runtime/pipelines/load.lua
+-- function LoadPipeline.run(input)
 
 function LoadPipeline.run(input)
     print("\n[load] BEGIN")
 
-    local env = route(input)
+    ------------------------------------------------------------
+    -- Route
+    ------------------------------------------------------------
+    local env, route_err = route(input)
 
+    if not env then
+        print("[load] FAILED during route")
+        print("[load] END\n")
+
+        return nil, {
+            kind  = "runtime_input_failure",
+            stage = "route",
+            path  = route_err and route_err.path,
+            error = route_err,
+        }
+    end
+
+    ------------------------------------------------------------
     -- Capture provenance BEFORE normalize unwraps env.data
+    ------------------------------------------------------------
     local io_meta = nil
     if type(env) == "table"
         and type(env.meta) == "table"
@@ -182,9 +257,30 @@ function LoadPipeline.run(input)
         io_meta = env.meta.io
     end
 
-    local batches = normalize(env)
+    ------------------------------------------------------------
+    -- Normalize (must be protected)
+    ------------------------------------------------------------
+    local ok, batches_or_err = pcall(function()
+        return normalize(env)
+    end)
 
-    -- Attach provenance to every canonical batch (do not overwrite existing)
+    if not ok then
+        print("[load] FAILED during normalize")
+        print("[load] END\n")
+
+        return nil, {
+            kind  = "runtime_input_failure",
+            stage = "normalize",
+            path  = io_meta and io_meta.source_path,
+            error = batches_or_err,
+        }
+    end
+
+    local batches = batches_or_err
+
+    ------------------------------------------------------------
+    -- Attach provenance
+    ------------------------------------------------------------
     if io_meta then
         for i = 1, #batches do
             local batch = batches[i]
@@ -195,11 +291,7 @@ function LoadPipeline.run(input)
         end
     end
 
-    print(string.format(
-        "[load] COMPLETE -> %d batch(es) ready",
-        #batches
-    ))
-
+    print(string.format("[load] COMPLETE -> %d batch(es) ready", #batches))
     print("[load] END\n")
 
     return batches

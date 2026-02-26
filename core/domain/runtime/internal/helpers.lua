@@ -148,13 +148,16 @@ function Helpers.resolve_batches(input, loader)
         error("[runtime] loader required for non-canonical input", 2)
     end
 
-    local batches = loader(input)
+    local batches, err = loader(input)
+
+    -- NEW: structured loader failure support
+    if not batches then
+        return nil, err
+    end
 
     Helpers.assert_batch_array(batches)
 
     return batches
-end
-
-----------------------------------------------------------------
+end----------------------------------------------------------------
 
 return Helpers

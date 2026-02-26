@@ -1,4 +1,4 @@
--- core/signals.lua
+-- core/signal.lua
 --
 -- Global diagnostic signal utilities.
 --

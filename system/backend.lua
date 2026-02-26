@@ -1,38 +1,51 @@
 -- system/backend.lua
+--
+-- Canonical backend bootstrap entrypoint.
 
-local Storage        = require("system.infrastructure.storage.controller")
-local Bootstrap      = require("system.infrastructure.bootstrap.controller")
-local Surface        = require("system.app.surface")
-local SystemDefaults = require("system.app.system_defaults")
+local Storage = require("system.infrastructure.storage.controller")
+local AppFS   = require("system.infrastructure.app_fs.controller")
+local Surface = require("system.app.surface")
 
+---@class Backend
 local Backend = {}
 
-function Backend.start(opts)
-    opts = opts or {}
+------------------------------------------------------------
+-- Internal bootstrap
+------------------------------------------------------------
 
-    local instance  = opts.instance  or "default"
-    local ledger_id = opts.ledger_id or "default"
+---Initialize storage and ensure layout.
+---@param instance_name string
+local function initialize_instance(instance_name)
+    Storage.set_instance(instance_name)
+    AppFS.ensure_instance_layout()
+end
 
-    Storage.set_instance(instance)
+------------------------------------------------------------
+-- Public API
+------------------------------------------------------------
 
-    Bootstrap.build({
-        ledger_id = ledger_id
-    })
+---Construct and return a ready Surface instance.
+---@param instance_name string|nil
+---@return Surface
+function Backend.run(instance_name)
+    instance_name = instance_name or "default"
+    initialize_instance(instance_name)
+    return Surface.new(instance_name)
+end
 
-    local surface = Surface.new(opts)
+---Construct Surface and error if initialization fails.
+---@param instance_name string|nil
+---@return Surface
+function Backend.run_strict(instance_name)
+    local ok, result = pcall(function()
+        return Backend.run(instance_name)
+    end)
 
-    -- Canonicalize active ledger context
-    if surface and surface.state and surface.state.set_context then
-        surface.state:set_context("active_ledger", ledger_id)
+    if not ok then
+        error("[backend] failed to initialize: " .. tostring(result), 2)
     end
 
-    -- Apply system-owned default resources (canonical reference store)
-    SystemDefaults.apply(surface)
-    print("STATE TABLE:", surface.state.resources)
-print("HUB TABLE:", surface.hub._specs)
-print("SAME TABLE?", surface.state.resources == surface.hub._specs)
-
-    return surface
+    return result
 end
 
 return Backend

@@ -19,9 +19,26 @@ function Generate.from_spec(spec)
     -- dimensions (always first)
     tokens[#tokens + 1] = Helpers.format_dimension(spec)
 
-    -- count
-    if spec.ct and spec.ct > 1 then
-        tokens[#tokens + 1] = "x" .. tostring(spec.ct)
+    -- count (ALWAYS explicit)
+    local count = spec.ct or 1
+    assert(type(count) == "number" and count >= 1, "invalid count in spec")
+    tokens[#tokens + 1] = "x" .. tostring(count)
+
+    -- tag validation (defensive boundary check)
+    local tag = spec.tag
+    if tag ~= nil then
+        if tag ~= "n" and tag ~= "c" and tag ~= "f" then
+            error(
+                string.format(
+                    "Label.generate(): invalid tag '%s' for %sx%sx%s",
+                    tostring(tag),
+                    tostring(spec.base_h),
+                    tostring(spec.base_w),
+                    tostring(spec.l)
+                ),
+                2
+            )
+        end
     end
 
     -- commercial codes (ordered)

@@ -1,49 +1,41 @@
--- core/domain/compare/internal/input.lua
---
--- Adapter: ingestion bundle → compare input
--- Supports multiple vendor sources.
--- Uses canonical runtime board shape directly.
--- No rebuilding. No grouping. No mutation.
-
-local M = {}
+local Input = {}
 
 ----------------------------------------------------------------
--- Public API
+-- Canonical Batch Adapter
 ----------------------------------------------------------------
 
---- @param bundle table { order=table, boards=table[] }
---- @param sources table[] { { name=string, boards=table[] } }
---- @param opts table|nil
---- @return table compare_input
-function M.from_bundle(bundle, sources, opts)
-    opts = opts or {}
+--- user batch is one item, vendor_batches must be supplied as a table of individual batches
+---@param user_batch table
+---@param vendor_batches table[]
+---@param opts table|nil
+---@return table
+function Input.from_batches(user_batch, vendor_batches, opts)
+    assert(type(user_batch) == "table", "[compare] user_batch required")
+    assert(type(user_batch.boards) == "table", "[compare] user_batch.boards required")
 
-    assert(type(bundle) == "table", "bundle required")
-    assert(type(bundle.order) == "table", "bundle.order required")
-    assert(type(bundle.boards) == "table", "bundle.boards required")
+    assert(type(vendor_batches) == "table", "[compare] vendor_batches required")
 
-    assert(type(sources) == "table", "sources table required")
+    local sources = {}
 
-    local normalized_sources = {}
+    for i, vb in ipairs(vendor_batches) do
+        assert(type(vb) == "table", "[compare] vendor batch must be table")
+        assert(type(vb.boards) == "table", "[compare] vendor batch.boards required")
 
-    for i, src in ipairs(sources) do
-        assert(type(src) == "table", "sources[" .. i .. "] must be table")
-        assert(type(src.name) == "string", "sources[" .. i .. "].name required")
-        assert(type(src.boards) == "table", "sources[" .. i .. "].boards required")
+        local name =
+            (vb.meta and vb.meta.io and vb.meta.io.source_path)
+            or ("vendor_" .. i)
 
-        normalized_sources[#normalized_sources + 1] = {
-            name   = src.name,
-            boards = src.boards,
+        sources[#sources + 1] = {
+            name   = name,
+            boards = vb.boards,
         }
     end
 
     return {
-        order = {
-            id     = bundle.order.order_number or bundle.order.id,
-            boards = bundle.boards,
-        },
-        sources = normalized_sources
+        order   = user_batch,
+        sources = sources,
+        opts    = opts or {},
     }
 end
 
-return M
+return Input

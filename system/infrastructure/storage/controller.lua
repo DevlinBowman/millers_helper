@@ -1,164 +1,100 @@
 -- system/infrastructure/storage/controller.lua
---
--- Canonical storage schema resolver.
--- ALL filesystem paths in the system must resolve through here.
---
--- Supports multi-instance isolation:
---   data/app/{instance}/...
 
+local FS = require("platform.io.registry").fs
+
+---@class Storage
 local Storage = {}
 
+local active_instance = "default"
+local cached_project_root = nil
+
 ------------------------------------------------------------
--- Configuration
+-- Internal Helpers
 ------------------------------------------------------------
--- Detect project root relative to this file
--- Detect project root relative to this file
-local function detect_project_root()
+
+local function normalize_path(path)
+    return (path or ""):gsub("\\", "/")
+end
+
+local function dirname(path)
+    return path:match("(.+)/[^/]+$") or nil
+end
+
+local function detect_project_root_containing_data()
     local source = debug.getinfo(1, "S").source
-    local filepath = source:sub(2) -- strip leading "@"
+    local file_path = normalize_path(source:sub(2))
+    local dir = dirname(file_path)
+    assert(dir, "[storage] failed to determine file directory")
 
-    -- Normalize slashes
-    filepath = filepath:gsub("\\", "/")
+    while dir do
+        if FS.is_dir(dir .. "/data") then
+            return dir
+        end
 
-    -- Remove "/system/infrastructure/storage/controller.lua"
-    local root = filepath:gsub("/system/infrastructure/storage/controller.lua$", "")
+        local parent = dirname(dir)
+        if not parent or parent == dir then
+            break
+        end
+        dir = parent
+    end
 
-    return root
+    error("[storage] could not locate project root containing /data", 2)
 end
 
-local PROJECT_ROOT = detect_project_root()
-local BASE_DIR = PROJECT_ROOT .. "/data"
-
-local APP_DIR  = "app"
-local INSTANCE = "default"
-
-local function join(...)
-    return table.concat({...}, "/")
+local function project_root()
+    if cached_project_root then
+        return cached_project_root
+    end
+    cached_project_root = detect_project_root_containing_data()
+    return cached_project_root
 end
 
-------------------------------------------------------------
--- Instance Control
-------------------------------------------------------------
-
-function Storage.set_instance(name)
-    assert(type(name) == "string" and name ~= "", "instance name required")
-    INSTANCE = name
-end
-
-function Storage.get_instance()
-    return INSTANCE
-end
-
-function Storage.base_root()
-    return BASE_DIR
-end
-
-function Storage.root()
-    return join(BASE_DIR, APP_DIR, INSTANCE)
+local function join2(a, b)
+    a = normalize_path(a or "")
+    b = normalize_path(b or "")
+    if a:sub(-1) == "/" then
+        a = a:sub(1, -2)
+    end
+    if b:sub(1, 1) == "/" then
+        b = b:sub(2)
+    end
+    return a .. "/" .. b
 end
 
 ------------------------------------------------------------
--- Ledgers
+-- Public API
 ------------------------------------------------------------
 
-function Storage.ledgers_root()
-    return join(Storage.root(), "ledgers")
+---Set active instance name.
+---@param instance_name string
+function Storage.set_instance(instance_name)
+    assert(type(instance_name) == "string" and #instance_name > 0, "[storage] instance_name required")
+    active_instance = instance_name
 end
 
-function Storage.ledger_root(ledger_id)
-    assert(type(ledger_id) == "string", "ledger_id required")
-    return join(Storage.ledgers_root(), ledger_id)
+---Return active instance name.
+---@return string
+function Storage.instance()
+    return active_instance
 end
 
-function Storage.ledger_file(ledger_id)
-    return join(Storage.ledger_root(ledger_id), "ledger.json")
+---Return project root containing /data.
+---@return string
+function Storage.project_root()
+    return project_root()
 end
 
-function Storage.ledger_txn_dir(ledger_id, txn_id)
-    assert(type(txn_id) == "string", "txn_id required")
-    return join(Storage.ledger_root(ledger_id), "txn", txn_id)
+---Return canonical app root path.
+---@return string
+function Storage.app_root()
+    return join2(join2(project_root(), "data/app"), active_instance)
 end
 
-function Storage.ledger_txn_file(ledger_id, txn_id, name)
-    assert(type(name) == "string", "txn file name required")
-    return join(Storage.ledger_txn_dir(ledger_id, txn_id), name .. ".json")
-end
-
-function Storage.ledger_txn_attachments(ledger_id, txn_id)
-    return join(Storage.ledger_txn_dir(ledger_id, txn_id), "attachments")
-end
-
-function Storage.ledger_exports_log(ledger_id)
-    return join(Storage.ledger_root(ledger_id), "exports_log.json")
-end
-
-------------------------------------------------------------
--- Clients
-------------------------------------------------------------
-
-function Storage.clients_root()
-    return join(Storage.root(), "clients")
-end
-
-function Storage.client_file(client_id)
-    assert(type(client_id) == "string", "client_id required")
-    return join(Storage.clients_root(), client_id .. ".json")
-end
-
-------------------------------------------------------------
--- Exports
-------------------------------------------------------------
-
-function Storage.exports_root()
-    return join(Storage.root(), "exports")
-end
-
-function Storage.export_root(kind)
-    assert(type(kind) == "string", "export kind required")
-    return join(Storage.exports_root(), kind)
-end
-
-function Storage.export_doc(kind, doc_id)
-    assert(type(doc_id) == "string", "doc_id required")
-    return join(Storage.export_root(kind), doc_id .. ".txt")
-end
-
-function Storage.export_meta(kind, doc_id)
-    return join(Storage.export_root(kind), doc_id .. ".meta.json")
-end
-
-------------------------------------------------------------
--- System Internals
-------------------------------------------------------------
-
-function Storage.system_root()
-    return join(Storage.root(), "system")
-end
-
-function Storage.runtime_ids()
-    return join(Storage.system_root(), "runtime_ids")
-end
-
-function Storage.presets(domain)
-    assert(type(domain) == "string", "domain required")
-    return join(Storage.system_root(), "presets", domain)
-end
-
-function Storage.vendor_cache_root()
-    return join(Storage.system_root(), "caches", "vendor")
-end
-
-------------------------------------------------------------
--- Sessions
-------------------------------------------------------------
-
-function Storage.sessions_root()
-    return join(Storage.root(), "sessions")
-end
-
-function Storage.session_file(name)
-    name = name or "last_session"
-    return join(Storage.sessions_root(), name .. ".json")
+---Ensure directory exists.
+---@param dir_path string
+function Storage.ensure_dir(dir_path)
+    assert(type(dir_path) == "string" and #dir_path > 0, "[storage] dir_path required")
+    FS.ensure_parent_dir(normalize_path(dir_path) .. "/.keep")
 end
 
 return Storage

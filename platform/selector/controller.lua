@@ -1,130 +1,180 @@
 -- platform/selector/controller.lua
 --
--- Boundary layer for structural selection.
+-- Selector façade.
+-- Provides chainable, safe structural traversal over dynamic tables.
+--
+-- Does NOT return envelopes.
+-- Stores traversal state internally.
+-- Exposes explicit value and type getters.
 
 local Pipeline   = require("platform.selector.pipelines.resolve")
 local Contract   = require("core.contract")
 local Trace      = require("tools.trace.trace")
-local Diagnostic = require("tools.diagnostic")
 
 local Controller = {}
 
-Controller.CONTRACT = {
-    get = {
-        in_ = {
-            root   = true,
-            tokens = true,
-        },
-        out = {
-            value = false,
-        },
-    },
-
-    exists = {
-        in_ = {
-            root   = true,
-            tokens = true,
-        },
-        out = {
-            exists = true,
-        },
-    },
-}
-
 ----------------------------------------------------------------
--- GET (RELAXED)
+-- SelectorView
 ----------------------------------------------------------------
 
-function Controller.get(root, tokens, ...)
-    Trace.contract_enter("selector.get")
-    Trace.contract_in({ root = root, tokens = tokens })
+---@class SelectorView
+---@field private __root any        -- original root value
+---@field private __value any       -- current resolved value
+---@field private __error table|nil -- last traversal failure
+local SelectorView = {}
+SelectorView.__index = SelectorView
 
-    Contract.assert(
-        { root = root, tokens = tokens },
-        Controller.CONTRACT.get.in_
-    )
+----------------------------------------------------------------
+-- CONSTRUCTOR
+----------------------------------------------------------------
 
-    Diagnostic.scope_enter("selector.get")
+--- Creates a new SelectorView rooted at the given value.
+---
+---@param root any
+---@return SelectorView
+function SelectorView.new(root)
+    return setmetatable({
+        __root  = root,
+        __value = root,
+        __error = nil,
+    }, SelectorView)
+end
 
-    local value, failure = Pipeline.get(root, tokens, ...)
+----------------------------------------------------------------
+-- PATH NAVIGATION
+----------------------------------------------------------------
 
-    local result
+--- Traverses into the current value using the provided keys.
+---
+--- Each argument may be a string (table key) or number (array index).
+--- If traversal fails, the selector enters a failed state.
+---
+---@param ... string|number
+---@return SelectorView
+function SelectorView:path(...)
+    if self.__error then
+        return self
+    end
+
+    Trace.contract_enter("selector.path")
+
+    local value, failure = Pipeline.get(self.__value, {...})
 
     if value == nil then
-        result = {
-            ok    = false,
-            value = nil,
-            error = failure,
-        }
+        self.__error = failure
+        self.__value = nil
     else
-        result = {
-            ok    = true,
-            value = value,
-            error = nil,
-        }
+        self.__value = value
     end
 
-    Trace.contract_out(result, "selector.get", "caller")
-
-    Diagnostic.scope_leave()
     Trace.contract_leave()
-
-    return result
+    return self
 end
 
 ----------------------------------------------------------------
--- GET STRICT
+-- INTROSPECTION
 ----------------------------------------------------------------
 
-function Controller.get_strict(root, tokens, ...)
-    local result = Controller.get(root, tokens, ...)
-    if not result.ok then
-        error(result.error, 2)
-    end
-    return result.value
+--- Returns true if the current selector value is non-nil.
+---
+---@return boolean
+function SelectorView:exists()
+    return self.__value ~= nil
 end
 
-----------------------------------------------------------------
--- EXISTS
-----------------------------------------------------------------
+--- Returns the current resolved value.
+--- Returns nil if traversal failed or value is nil.
+---
+---@return any|nil
+function SelectorView:value()
+    return self.__value
+end
 
-function Controller.exists(root, tokens, ...)
-    Trace.contract_enter("selector.exists")
-    Trace.contract_in({ root = root, tokens = tokens })
-
-    Contract.assert(
-        { root = root, tokens = tokens },
-        Controller.CONTRACT.exists.in_
-    )
-
-    Diagnostic.scope_enter("selector.exists")
-
-    local ok, err = Pipeline.exists(root, tokens, ...)
-
-    if not ok and err then
-        Diagnostic.user_message(err, "error")
+--- Returns the current resolved value.
+--- Throws an error if traversal failed or value is nil.
+---
+---@return any
+function SelectorView:require()
+    if self.__value == nil then
+        error(
+            Controller.format_error(self.__error, { label = "selector" }),
+            2
+        )
     end
 
-    Trace.contract_out({ exists = ok }, "selector.exists", "caller")
-
-    Diagnostic.scope_leave()
-    Trace.contract_leave()
-
-    return ok, err
+    return self.__value
 end
 
 ----------------------------------------------------------------
--- EXISTS STRICT
+-- TYPE GETTERS
 ----------------------------------------------------------------
 
-function Controller.exists_strict(root, tokens)
-    local ok = Controller.exists(root, tokens)
-    if not ok then
-        error("selector path does not exist", 2)
+--- Returns the value if it is a string.
+--- Otherwise returns nil.
+---
+---@return string|nil
+function SelectorView:as_string()
+    if type(self.__value) == "string" then
+        return self.__value
     end
-    return true
+    return nil
 end
 
+--- Returns the value if it is a number.
+--- Otherwise returns nil.
+---
+---@return number|nil
+function SelectorView:as_number()
+    if type(self.__value) == "number" then
+        return self.__value
+    end
+    return nil
+end
+
+--- Returns the value if it is a table.
+--- Otherwise returns nil.
+---
+---@return table|nil
+function SelectorView:as_table()
+    if type(self.__value) == "table" then
+        return self.__value
+    end
+    return nil
+end
+
+--- Returns the value if it is a table.
+--- If not a table, returns an empty array.
+---
+---@return table
+function SelectorView:as_array()
+    if type(self.__value) ~= "table" then
+        return {}
+    end
+    return self.__value
+end
+
+----------------------------------------------------------------
+-- ENTRYPOINT
+----------------------------------------------------------------
+
+--- Creates a new selector rooted at the provided value.
+---
+---@param root any
+---@return SelectorView
+function Controller.from(root)
+    Contract.assert({ root = root }, { root = true })
+    return SelectorView.new(root)
+end
+
+----------------------------------------------------------------
+-- ERROR FORMATTER
+----------------------------------------------------------------
+
+--- Formats a structured selector failure into a readable message.
+---
+---@param failure table
+---@param opts table|nil
+---@return string
 function Controller.format_error(failure, opts)
     return require("platform.selector.registry")
         .format_error.run(failure, opts)
