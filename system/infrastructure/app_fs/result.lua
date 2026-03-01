@@ -2,101 +2,150 @@
 --
 -- AppFSResult is a semantic façade over an app-owned filesystem location.
 -- It wraps a resolved absolute path and delegates inspection to platform.io.query.
+--
+-- Design:
+--   • Traversal methods are primary (files, dirs, entries, file, dir)
+--   • Evaluation + metadata live under :inspect()
+--   • Traversal is strict by default
+--   • No require_* methods exposed publicly
 
 local IOQuery = require("platform.io.query").controller
+
+----------------------------------------------------------------
+-- Types
+----------------------------------------------------------------
+
+---@class AppFSInspection
+---@field exists fun():boolean              -- true if path exists
+---@field is_directory fun():boolean        -- true if path is directory
+---@field is_file fun():boolean             -- true if path is file
+---@field is_missing fun():boolean          -- true if path missing
+---@field size fun():integer|nil            -- file size in bytes (file only)
+---@field hash fun():string|nil             -- file hash (file only)
 
 ---@class AppFSResult
 ---@field private __path string
 local AppFSResult = {}
 AppFSResult.__index = AppFSResult
 
+----------------------------------------------------------------
+-- Constructor
+----------------------------------------------------------------
+
+---Create new AppFSResult for absolute path.
 ---@param absolute_path string
 ---@return AppFSResult
 function AppFSResult.new(absolute_path)
-    assert(type(absolute_path) == "string" and #absolute_path > 0, "[app_fs] absolute_path required")
-    return setmetatable({ __path = absolute_path }, AppFSResult)
+    assert(
+        type(absolute_path) == "string" and #absolute_path > 0,
+        "[app_fs] absolute_path required"
+    )
+
+    return setmetatable({
+        __path = absolute_path
+    }, AppFSResult)
 end
 
-------------------------------------------------------------
--- Meaning Layer (semantic access)
-------------------------------------------------------------
+----------------------------------------------------------------
+-- Core
+----------------------------------------------------------------
 
+---Return absolute filesystem path string.
+---@return string
 function AppFSResult:path()
     return self.__path
 end
 
+
+---@private
+---@return QueryResult
 function AppFSResult:query()
-    -- Returns QueryResult façade (platform/io/query/controller.lua)
     return IOQuery.query_strict(self.__path)
 end
 
-function AppFSResult:exists()
-    return self:query():exists()
-end
+----------------------------------------------------------------
+-- Traversal (Primary Surface)
+----------------------------------------------------------------
 
-function AppFSResult:is_directory()
-    return self:query():is_directory()
-end
-
-function AppFSResult:is_file()
-    return self:query():is_file()
-end
-
-------------------------------------------------------------
--- Directory helpers (normalized)
-------------------------------------------------------------
-
+---Return file paths within directory (strict).
+---@return string[]
 function AppFSResult:files()
-    return self:query():require_directory():files()
+    local q = self:query()
+    assert(q:is_directory(), "[fs] expected directory: " .. self:path())
+    return q:files()
 end
 
+---Return subdirectory paths within directory (strict).
+---@return string[]
 function AppFSResult:dirs()
-    return self:query():require_directory():dirs()
+    local q = self:query()
+    assert(q:is_directory(), "[fs] expected directory: " .. self:path())
+    return q:dirs()
 end
 
+---Return raw directory entry names (strict).
+---@return string[]
 function AppFSResult:entries()
-    return self:query():require_directory():entries()
+    local q = self:query()
+    assert(q:is_directory(), "[fs] expected directory: " .. self:path())
+    return q:entries()
 end
 
+---Return file path at given index (directory only).
+---@param index integer
+---@return string|nil
 function AppFSResult:file(index)
     local files = self:files()
     return files[index]
 end
 
+---Return directory path at given index (directory only).
+---@param index integer
+---@return string|nil
 function AppFSResult:dir(index)
     local dirs = self:dirs()
     return dirs[index]
 end
 
-------------------------------------------------------------
--- File helpers (normalized)
-------------------------------------------------------------
+----------------------------------------------------------------
+-- Evaluation / Metadata (Grouped)
+----------------------------------------------------------------
 
-function AppFSResult:size()
-    return self:query():require_file():size()
-end
+---Return inspection helpers for existence and metadata.
+---@return AppFSInspection
+function AppFSResult:inspect()
+    local q = self:query()
 
-function AppFSResult:hash()
-    return self:query():require_file():hash()
-end
+    ---@type AppFSInspection
+    local inspection = {
+        exists = function()
+            return q:exists()
+        end,
 
-------------------------------------------------------------
--- Policy helpers (strictness)
-------------------------------------------------------------
+        is_directory = function()
+            return q:is_directory()
+        end,
 
-function AppFSResult:require_exists()
-    self:query():require_exists()
-    return self
-end
+        is_file = function()
+            return q:is_file()
+        end,
 
-function AppFSResult:require_directory()
-    self:query():require_directory()
-    return self
-end
+        is_missing = function()
+            return q:is_missing()
+        end,
 
-function AppFSResult:require_file()
-    self:query():require_file()
-    return self
+        size = function()
+            assert(q:is_file(), "[fs] expected file: " .. self:path())
+            return q:size()
+        end,
+
+        hash = function()
+            assert(q:is_file(), "[fs] expected file: " .. self:path())
+            return q:hash()
+        end,
+    }
+
+    return inspection
 end
 
 return AppFSResult

@@ -1,14 +1,28 @@
 -- system/app/surface.lua
 --
 -- Surface: application boundary object.
--- Owns instance selection and exposes canonical filesystem access.
+-- Owns instance selection and exposes application capabilities.
+--
+-- Top-level capabilities:
+--   • fs()        → filesystem capability
+--   • data()      → state/data capability
+--   • services()  → orchestration services capability
+--
+-- Surface must NOT expose infrastructure modules directly.
 
-local Storage = require("system.infrastructure.storage.controller")
-local AppFS   = require("system.infrastructure.app_fs.controller")
+local Storage  = require("system.infrastructure.storage.controller")
+local AppFS    = require("system.infrastructure.app_fs.controller")
 local Registry = require("system.infrastructure.app_fs.registry")
+
+local FSFacade       = require("system.app.fs")
+local DataFacade     = require("system.app.data")
+local ServicesFacade = require("system.app.services")
 
 ---@class Surface
 ---@field private _instance string
+---@field private _fs AppFSFacade|nil
+---@field private _data AppDataFacade|nil
+---@field private _services AppServicesFacade|nil
 local Surface = {}
 Surface.__index = Surface
 
@@ -21,11 +35,18 @@ Surface.__index = Surface
 ---@return Surface
 function Surface.new(instance_name)
     instance_name = instance_name or "default"
+
+    -- Set active instance in storage layer
     Storage.set_instance(instance_name)
+
+    -- Ensure canonical directory layout exists
     AppFS.ensure_instance_layout()
 
     return setmetatable({
         _instance = instance_name,
+        _fs = nil,
+        _data = nil,
+        _services = nil,
     }, Surface)
 end
 
@@ -46,21 +67,21 @@ function Surface:app_root()
 end
 
 ------------------------------------------------------------
--- State Inspect
+-- State Inspect (Logical Only)
 ------------------------------------------------------------
 
 ---Return logical schema state (no filesystem access).
 ---@return table
 function Surface:inspect_state()
     return {
-        instance = self._instance,
-        app_root = Storage.app_root(),
-        locations = Registry.locations
+        instance  = self._instance,
+        app_root  = Storage.app_root(),
+        locations = Registry.locations,
     }
 end
 
 ------------------------------------------------------------
--- Graph Inspect
+-- Graph Inspect (Filesystem Reality)
 ------------------------------------------------------------
 
 ---Return merged schema + filesystem reality graph.
@@ -86,73 +107,42 @@ function Surface:inspect_graph()
 end
 
 ------------------------------------------------------------
--- Canonical filesystem access
+-- Capability: Filesystem
 ------------------------------------------------------------
 
----Return AppFS infrastructure controller.
----@return AppFS
+---Return filesystem capability surface.
+---@return AppFSFacade
 function Surface:fs()
-    return AppFS
+    if not self._fs then
+        self._fs = FSFacade.new()
+    end
+    return self._fs
 end
 
----Return vendor store location.
----@return AppFSResult
-function Surface:vendor_store()
-    return AppFS.vendor_store()
+------------------------------------------------------------
+-- Capability: Data / State
+------------------------------------------------------------
+
+---Return state/data capability surface.
+---@return AppDataFacade
+function Surface:data()
+    if not self._data then
+        self._data = DataFacade.new()
+    end
+    return self._data
 end
 
----Return ledger store location.
----@return AppFSResult
-function Surface:ledger_store()
-    return AppFS.ledger_store()
-end
+------------------------------------------------------------
+-- Capability: Services
+------------------------------------------------------------
 
----Return runtime IDs location.
----@return AppFSResult
-function Surface:runtime_ids()
-    return AppFS.runtime_ids()
-end
-
----Return ledgers directory location.
----@return AppFSResult
-function Surface:ledgers()
-    return AppFS.ledgers()
-end
-
----Return sessions directory location.
----@return AppFSResult
-function Surface:sessions()
-    return AppFS.sessions()
-end
-
----Return last session file location.
----@return AppFSResult
-function Surface:last_session()
-    return AppFS.last_session()
-end
-
----Return exports directory location.
----@return AppFSResult
-function Surface:exports()
-    return AppFS.exports()
-end
-
----Return clients directory location.
----@return AppFSResult
-function Surface:clients()
-    return AppFS.clients()
-end
-
----Return user inputs directory location.
----@return AppFSResult
-function Surface:user_inputs()
-    return AppFS.user_inputs()
-end
-
----Return user exports directory location.
----@return AppFSResult
-function Surface:user_exports()
-    return AppFS.user_exports()
+---Return services capability surface.
+---@return AppServicesFacade
+function Surface:services()
+    if not self._services then
+        self._services = ServicesFacade.new()
+    end
+    return self._services
 end
 
 return Surface
