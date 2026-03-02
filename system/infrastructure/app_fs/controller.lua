@@ -1,4 +1,17 @@
 -- system/infrastructure/app_fs/controller.lua
+--
+-- AppFS Infrastructure Controller
+--
+-- Responsibilities:
+--   • Resolve canonical filesystem locations from the registry
+--   • Ensure instance directory layout exists
+--   • Provide AppFSResult façades for canonical locations
+--   • Provide schema + filesystem reality inspection
+--
+-- Notes:
+--   • This is infrastructure (not a capability façade).
+--   • Callers should typically go through app:fs():store() / app:fs():util()
+--     instead of requiring this module directly.
 
 local Storage  = require("system.infrastructure.storage.controller")
 local Registry = require("system.infrastructure.app_fs.registry")
@@ -11,10 +24,15 @@ local AppFS = {}
 -- Internal helpers
 ------------------------------------------------------------
 
+---@param path string|nil
+---@return string
 local function normalize_path(path)
     return (path or ""):gsub("\\", "/")
 end
 
+---@param a string
+---@param b string
+---@return string
 local function join2(a, b)
     a = normalize_path(a or "")
     b = normalize_path(b or "")
@@ -23,6 +41,8 @@ local function join2(a, b)
     return a .. "/" .. b
 end
 
+---@param name string
+---@return table|nil, string|nil
 local function resolve_location(name)
     local relative = Registry.locations[name]
     if not relative then
@@ -42,7 +62,7 @@ end
 -- Layout
 ------------------------------------------------------------
 
----Ensure canonical directory structure exists.
+---Ensure canonical directory structure exists for the active instance.
 ---@return boolean
 function AppFS.ensure_instance_layout()
     local root = Storage.app_root()
@@ -56,10 +76,10 @@ function AppFS.ensure_instance_layout()
 end
 
 ------------------------------------------------------------
--- Raw
+-- Raw (DTO)
 ------------------------------------------------------------
 
----Return raw location DTO.
+---Return raw location DTO for a canonical registry name.
 ---@param name string
 ---@return table|nil, string|nil
 function AppFS.get_raw(name)
@@ -70,7 +90,7 @@ end
 -- Façade
 ------------------------------------------------------------
 
----Return AppFSResult façade.
+---Return AppFSResult façade for a canonical registry name.
 ---@param name string
 ---@return AppFSResult|nil, string|nil
 function AppFS.get(name)
@@ -81,7 +101,7 @@ function AppFS.get(name)
     return Result.new(dto.absolute)
 end
 
----Return AppFSResult or error.
+---Return AppFSResult façade or throw.
 ---@param name string
 ---@return AppFSResult
 function AppFS.get_strict(name)
@@ -93,50 +113,116 @@ function AppFS.get_strict(name)
 end
 
 ------------------------------------------------------------
--- Named Accessors
+-- Named Accessors (New Standard)
+-- These MUST correspond to keys in system/infrastructure/app_fs/registry.lua
 ------------------------------------------------------------
 
----@return AppFSResult
-function AppFS.vendor_store() return AppFS.get_strict("vendor_store") end
+------------------------------------------------------------
+-- Domain roots
+------------------------------------------------------------
 
+---Ledger domain root.
 ---@return AppFSResult
-function AppFS.ledger_store() return AppFS.get_strict("ledger_store") end
+function AppFS.ledger()
+    return AppFS.get_strict("ledger")
+end
 
+---Client domain root.
 ---@return AppFSResult
-function AppFS.runtime_ids() return AppFS.get_strict("runtime_ids") end
+function AppFS.client()
+    return AppFS.get_strict("client")
+end
 
+---Vendor cache root.
 ---@return AppFSResult
-function AppFS.ledgers() return AppFS.get_strict("ledgers") end
+function AppFS.vendor()
+    return AppFS.get_strict("vendor")
+end
 
----@return AppFSResult
-function AppFS.sessions() return AppFS.get_strict("sessions") end
+------------------------------------------------------------
+-- User roots (persisted, user-facing)
+------------------------------------------------------------
 
+---User root directory.
 ---@return AppFSResult
-function AppFS.last_session() return AppFS.get_strict("last_session") end
+function AppFS.user()
+    return AppFS.get_strict("user")
+end
 
+---User imports directory (persisted by policy).
 ---@return AppFSResult
-function AppFS.exports() return AppFS.get_strict("exports") end
+function AppFS.user_imports()
+    return AppFS.get_strict("user_imports")
+end
 
+---User exports directory.
 ---@return AppFSResult
-function AppFS.clients() return AppFS.get_strict("clients") end
+function AppFS.user_exports()
+    return AppFS.get_strict("user_exports")
+end
 
+---User vault directory (curated saved inputs).
 ---@return AppFSResult
-function AppFS.user_inputs() return AppFS.get_strict("user_inputs") end
+function AppFS.user_vault()
+    return AppFS.get_strict("user_vault")
+end
 
+------------------------------------------------------------
+-- System roots (system-owned)
+------------------------------------------------------------
+
+---System root directory.
 ---@return AppFSResult
-function AppFS.user_exports() return AppFS.get_strict("user_exports") end
+function AppFS.system()
+    return AppFS.get_strict("system")
+end
+
+---System staged directory (ephemeral runtime staging).
+---@return AppFSResult
+function AppFS.system_staged()
+    return AppFS.get_strict("system_staged")
+end
+
+---System sessions directory (state snapshots).
+---@return AppFSResult
+function AppFS.system_sessions()
+    return AppFS.get_strict("system_sessions")
+end
+
+---System runtime_ids directory (counters).
+---@return AppFSResult
+function AppFS.system_runtime_ids()
+    return AppFS.get_strict("system_runtime_ids")
+end
+
+---System presets directory (domain presets).
+---@return AppFSResult
+function AppFS.system_presets()
+    return AppFS.get_strict("system_presets")
+end
+
+------------------------------------------------------------
+-- System files
+------------------------------------------------------------
+
+---Last session snapshot file.
+---@return AppFSResult
+function AppFS.last_session()
+    return AppFS.get_strict("last_session")
+end
 
 ------------------------------------------------------------
 -- Inspect
 ------------------------------------------------------------
 
----Return static schema map.
+---Return static schema map (Registry.locations).
 ---@return table
 function AppFS.inspect_schema()
     return Registry.locations
 end
 
----Return filesystem reality map.
+---Return filesystem reality map keyed by registry name.
+---Each entry contains: relative, absolute, exists, kind.
 ---@return table<string, table>
 function AppFS.inspect_fs()
     local out = {}

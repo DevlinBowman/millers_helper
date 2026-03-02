@@ -9,49 +9,51 @@ local Registry = {}
 
 Registry.locations = {
     ------------------------------------------------------------
-    -- ROOT GROUPS
+    -- DOMAIN ROOTS
     ------------------------------------------------------------
-    ledgers        = "ledgers",
-    sessions       = "sessions",
-    exports        = "exports",
-    clients        = "clients",
-    user           = "user",
-    system         = "system",
+    ledger = "ledger",
+    client = "client",
+    vendor = "vendor",
 
     ------------------------------------------------------------
-    -- SYSTEM (owned by system)
+    -- USER (persisted, user-facing)
     ------------------------------------------------------------
-    system_caches       = "system/caches",
-    vendor_store        = "system/caches/vendor",
-    ledger_store        = "system/caches/ledger",
-    runtime_ids         = "system/runtime_ids",
+    user         = "user",
+    user_imports = "user/imports",
+    user_exports = "user/exports",
+    user_vault   = "user/vault",
 
     ------------------------------------------------------------
-    -- SESSIONS (owned by system/app boundary)
+    -- SYSTEM (owned by system/app boundary)
     ------------------------------------------------------------
-    last_session        = "sessions/last_session.json",
+    system            = "system",
+    system_staged     = "system/staged",
+    system_sessions   = "system/sessions",
+    system_runtime_ids= "system/runtime_ids",
+    system_presets    = "system/presets",
 
     ------------------------------------------------------------
-    -- USER (owned by user workflows)
+    -- SYSTEM FILES
     ------------------------------------------------------------
-    user_inputs         = "user/inputs",
-    user_exports        = "user/exports",
+    last_session = "system/sessions/last_session.json",
 }
 
 -- Canonical directories that must exist for a valid instance.
 Registry.ensure_dirs = {
-    "ledgers",
-    "sessions",
-    "exports",
-    "clients",
+    "ledger",
+    "client",
+    "vendor",
+
     "user",
-    "user/inputs",
+    "user/imports",
     "user/exports",
+    "user/vault",
+
     "system",
-    "system/caches",
-    "system/caches/vendor",
-    "system/caches/ledger",
+    "system/staged",
+    "system/sessions",
     "system/runtime_ids",
+    "system/presets",
 }
 
 return Registry

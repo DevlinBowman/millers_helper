@@ -13,7 +13,6 @@ local Backend = {}
 -- Internal bootstrap
 ------------------------------------------------------------
 
----Initialize storage and ensure layout.
 ---@param instance_name string
 local function initialize_instance(instance_name)
     Storage.set_instance(instance_name)
@@ -24,16 +23,21 @@ end
 -- Public API
 ------------------------------------------------------------
 
----Construct and return a ready Surface instance.
 ---@param instance_name string|nil
 ---@return Surface
 function Backend.run(instance_name)
     instance_name = instance_name or "default"
+
     initialize_instance(instance_name)
-    return Surface.new(instance_name)
+
+    local surface = Surface.new(instance_name)
+
+    -- register system file pointers only
+    surface:data():resources():pull_system()
+
+    return surface
 end
 
----Construct Surface and error if initialization fails.
 ---@param instance_name string|nil
 ---@return Surface
 function Backend.run_strict(instance_name)

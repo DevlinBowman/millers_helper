@@ -44,8 +44,8 @@ function Surface.new(instance_name)
 
     return setmetatable({
         _instance = instance_name,
-        _fs = nil,
-        _data = nil,
+        _fs       = nil,
+        _data     = nil,
         _services = nil,
     }, Surface)
 end
@@ -113,9 +113,13 @@ end
 ---Return filesystem capability surface.
 ---@return AppFSFacade
 function Surface:fs()
-    if not self._fs then
-        self._fs = FSFacade.new()
+    if self._fs == nil then
+        ---@type AppFSFacade
+        local facade = FSFacade.new()
+        self._fs = facade
     end
+
+    ---@type AppFSFacade
     return self._fs
 end
 
@@ -126,9 +130,13 @@ end
 ---Return state/data capability surface.
 ---@return AppDataFacade
 function Surface:data()
-    if not self._data then
-        self._data = DataFacade.new()
+    if self._data == nil then
+        ---@type AppDataFacade
+        local facade = DataFacade.new(self)
+        self._data = facade
     end
+
+    ---@type AppDataFacade
     return self._data
 end
 
@@ -139,9 +147,13 @@ end
 ---Return services capability surface.
 ---@return AppServicesFacade
 function Surface:services()
-    if not self._services then
-        self._services = ServicesFacade.new()
+    if self._services == nil then
+        ---@type AppServicesFacade
+        local facade = ServicesFacade.new(self)
+        self._services = facade
     end
+
+    ---@type AppServicesFacade
     return self._services
 end
 
