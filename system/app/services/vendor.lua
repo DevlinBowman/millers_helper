@@ -1,20 +1,8 @@
 -- system/app/services/vendor.lua
 
-local Runtime        = require("core.domain.runtime").controller
 local VendorRef      = require("core.domain.vendor_reference").controller
 local VendorRegistry = require("core.domain.vendor_reference").registry
 local FSHelpers      = require("system.app.fs_helpers")
-
----@class VendorServiceUpdateParams
----@field vendor_name string
----@field vendor_batch table        -- RuntimeBatch (required)
----@field existing_vendor table|nil -- optional
----@field opts table|nil            -- optional
-
----@class VendorServiceUpdateResponse
----@field result VendorReferenceResult
----@field cache_path string
----@field vendor_name string
 
 ---@class AppVendorService
 local Vendor = {}
@@ -24,98 +12,170 @@ function Vendor.new(app)
     return setmetatable({ __app = app }, Vendor)
 end
 
----@param params VendorServiceUpdateParams
----@return VendorServiceUpdateResponse
----@param params VendorServiceUpdateParams
----@return VendorServiceUpdateResponse
----@param params VendorServiceUpdateParams
----@return VendorServiceUpdateResponse
-function Vendor:update(params)
-    assert(type(params) == "table", "[vendor] params required")
+------------------------------------------------------------
+-- Run vendor push with full validation + messaging
+------------------------------------------------------------
 
-    assert(type(params.vendor_name) == "string" and params.vendor_name ~= "",
-        "[vendor] vendor_name required")
-
-    assert(params.vendor_batch ~= nil,
-        "[vendor] vendor_batch required")
-
-    local normalized =
-        VendorRegistry.vendor.normalize_name(params.vendor_name)
-
-    assert(normalized, "[vendor] invalid vendor_name")
+---@param selector integer|string|nil
+---@param opts table|nil
+---@return table
+function Vendor:run(selector, opts)
+    local data      = self.__app:data()
+    local resources = data:resources()
+    local runtime   = data:runtime()
 
     ------------------------------------------------------------
-    -- Normalize vendor_batch → canonical RuntimeBatch
+    -- 1. Validate user vendor resources
     ------------------------------------------------------------
 
-    local vendor_batch
+    local user_list = resources:get("user", "vendor")
 
-    -- RuntimeResult façade
-    if type(params.vendor_batch) == "table"
-        and type(params.vendor_batch.batch) == "function" then
-
-        vendor_batch = params.vendor_batch:batch()
-
-    -- Already canonical RuntimeBatch
-    elseif type(params.vendor_batch) == "table"
-        and type(params.vendor_batch.boards) == "table" then
-
-        vendor_batch = params.vendor_batch
-
-    else
-        error("[vendor] vendor_batch must be RuntimeResult or RuntimeBatch")
+    if type(user_list) ~= "table" or #user_list == 0 then
+        return {
+            ok = false,
+            stage = "no_user_vendor",
+            message = "No user vendor resources are registered."
+        }
     end
 
-    assert(type(vendor_batch.boards) == "table",
-        "[vendor] canonical vendor_batch.boards required")
+    ------------------------------------------------------------
+    -- 2. Resolve selector
+    ------------------------------------------------------------
+
+    local index
+
+    if selector == nil then
+        if #user_list ~= 1 then
+            return {
+                ok = false,
+                stage = "ambiguous_selector",
+                message = "Multiple user vendors exist. Provide selector (index or id)."
+            }
+        end
+        index = 1
+
+    elseif type(selector) == "number" then
+        index = selector
+
+    elseif type(selector) == "string" then
+        for i = 1, #user_list do
+            if user_list[i].id == selector then
+                index = i
+                break
+            end
+        end
+        if not index then
+            return {
+                ok = false,
+                stage = "invalid_selector",
+                message = "User vendor id not found: " .. selector
+            }
+        end
+
+    else
+        return {
+            ok = false,
+            stage = "invalid_selector_type",
+            message = "Selector must be nil | number | string."
+        }
+    end
+
+    local descriptor = user_list[index]
+    if not descriptor then
+        return {
+            ok = false,
+            stage = "descriptor_missing",
+            message = "User vendor descriptor missing at index " .. tostring(index)
+        }
+    end
 
     ------------------------------------------------------------
-    -- Resolve canonical cache path
+    -- 3. Load runtime batch
+    ------------------------------------------------------------
+
+    local runtime_result
+    local ok_rt, err = pcall(function()
+        runtime_result = runtime:require("user", "vendor", index)
+    end)
+
+    if not ok_rt or not runtime_result then
+        return {
+            ok = false,
+            stage = "runtime_load_failed",
+            message = err or "Failed to load runtime vendor batch."
+        }
+    end
+
+    if type(runtime_result.batch) ~= "function" then
+        return {
+            ok = false,
+            stage = "invalid_runtime_shape",
+            message = "Runtime vendor batch missing batch() method."
+        }
+    end
+
+    local batch = runtime_result:batch()
+    if type(batch.boards) ~= "table" then
+        return {
+            ok = false,
+            stage = "invalid_batch_shape",
+            message = "Runtime vendor batch missing boards table."
+        }
+    end
+
+    ------------------------------------------------------------
+    -- 4. Normalize vendor id
+    ------------------------------------------------------------
+
+    local normalized = VendorRegistry.vendor.normalize_name(descriptor.id)
+    if not normalized then
+        return {
+            ok = false,
+            stage = "normalize_failed",
+            message = "Failed to normalize vendor id."
+        }
+    end
+
+    ------------------------------------------------------------
+    -- 5. Determine canonical target path
     ------------------------------------------------------------
 
     local helpers     = FSHelpers.new()
     local vendor_root = self.__app:fs():store():vendor()
-    local cache_path  = helpers:child(vendor_root, normalized .. ".csv")
+    local target_path = helpers:child(vendor_root, normalized .. ".csv")
+
+    local target_exists = helpers:exists(target_path)
 
     ------------------------------------------------------------
-    -- Load existing vendor rows if present
+    -- 6. Domain run
     ------------------------------------------------------------
 
-    local existing_vendor = params.existing_vendor
-
-    if existing_vendor == nil and helpers:exists(cache_path) then
-        local runtime = Runtime.load_strict(cache_path)
-        existing_vendor = runtime:batch().boards
-    end
-
-    ------------------------------------------------------------
-    -- Domain update
-    ------------------------------------------------------------
-
-    local result = VendorRef.update(
+    local result = VendorRef.run(
         normalized,
-        vendor_batch,
-        existing_vendor,
-        params.opts or {}
+        batch.boards,
+        target_path,
+        opts or { codec = "delimited" }
     )
 
-    -- Enforce canonical domain result before writing
-    result:require_no_errors()
-
     ------------------------------------------------------------
-    -- Persist canonical result
+    -- 7. Success message
     ------------------------------------------------------------
 
-    result:write_strict(cache_path, "delimited")
+    local message
 
-    ------------------------------------------------------------
-    -- Return structured service response
-    ------------------------------------------------------------
+    if target_exists then
+        message = "Vendor '" .. normalized .. "' updated successfully (overwritten)."
+    else
+        message = "Vendor '" .. normalized .. "' created successfully."
+    end
 
     return {
+        ok = true,
+        stage = target_exists and "overwrite" or "create",
+        message = message,
         vendor_name = normalized,
-        cache_path  = cache_path,
-        result      = result,
+        cache_path = target_path,
+        result = result,
     }
 end
 

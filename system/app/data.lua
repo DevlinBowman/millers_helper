@@ -84,21 +84,39 @@ function Data:runtime()
 
         ---@param scope "system"|"user"
         ---@param role string
-        ---@param identifier string
+        ---@param index integer
         ---@return any
-        local function loader(scope, role, identifier)
-            local entry = resources:get(scope, role, identifier)
-            entry = assert(
-                entry,
-                "[data.runtime] missing resource: "
-                    .. tostring(scope) .. "."
-                    .. tostring(role) .. "."
-                    .. tostring(identifier)
-            )
+        local function loader(scope, role, index)
+            local list = resources:get(scope, role)
+            list = assert(list, "[data.runtime] missing resource list: " .. tostring(scope) .. "." .. tostring(role))
+
+            local entry = list[index]
+            entry = assert(entry, "[data.runtime] missing resource entry: " .. tostring(scope) .. "." .. tostring(role) .. "[" .. tostring(index) .. "]")
+
             return resources:load_entry(entry)
         end
 
-        self.__runtime = RuntimeNS.new(self.__state, loader)
+        ---@param scope "system"|"user"
+        ---@param role string
+        ---@param id string
+        ---@return integer|nil
+        local function resolve_index(scope, role, id)
+            local list = resources:get(scope, role)
+            if type(list) ~= "table" then
+                return nil
+            end
+
+            for i = 1, #list do
+                local entry = list[i]
+                if type(entry) == "table" and entry.id == id then
+                    return i
+                end
+            end
+
+            return nil
+        end
+
+        self.__runtime = RuntimeNS.new(self.__state, loader, resolve_index)
     end
 
     return self.__runtime
