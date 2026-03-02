@@ -8,6 +8,7 @@
 local Storage      = require("system.infrastructure.storage.controller")
 local AppFS        = require("system.infrastructure.app_fs.controller")
 local Registry     = require("system.infrastructure.app_fs.registry")
+local Result       = require("system.infrastructure.app_fs.result")
 local HelpersFacade= require("system.app.fs.helpers")
 
 ----------------------------------------------------------------
@@ -82,7 +83,6 @@ function Store:preset_domain(domain)
     assert(type(domain) == "string" and #domain > 0, "[fs.store] domain required")
     local root = AppFS.system_presets():path()
     local path = HelpersFacade.new():join(root, domain)
-    local Result = require("system.infrastructure.app_fs.result")
     return Result.new(path)
 end
 

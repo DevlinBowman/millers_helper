@@ -8,25 +8,30 @@ local Runtime = require("core.domain.runtime").controller
 local Resources = {}
 Resources.__index = Resources
 
+----------------------------------------------------------------
+-- Constructor
+----------------------------------------------------------------
+
 ---@param app Surface
 ---@param state table
 ---@return AppDataResources
 function Resources.new(app, state)
+    assert(type(app) == "table", "[resources] app required")
+    assert(type(state) == "table", "[resources] state required")
+
+    state.resources = state.resources or {}
     state.resources.system = state.resources.system or {}
     state.resources.user   = state.resources.user   or {}
 
-    ---@type AppDataResources
-    local instance = setmetatable({
+    return setmetatable({
         __app   = app,
         __state = state
     }, Resources)
-
-    return instance
 end
 
-------------------------------------------------------------
+----------------------------------------------------------------
 -- Accessors
-------------------------------------------------------------
+----------------------------------------------------------------
 
 function Resources:user()
     return self.__state.resources.user
@@ -36,25 +41,30 @@ function Resources:system()
     return self.__state.resources.system
 end
 
-------------------------------------------------------------
+----------------------------------------------------------------
 -- Runtime Loader Entry
-------------------------------------------------------------
+----------------------------------------------------------------
 
 ---@param entry table
 ---@return RuntimeResult
 function Resources:load_entry(entry)
 
-    assert(entry and entry.load_spec,
-        "[resources] invalid resource entry")
+    assert(type(entry) == "table", "[resources] entry required")
+    assert(type(entry.load_spec) == "table", "[resources] load_spec missing")
 
     local spec = entry.load_spec
 
     if spec.type == "single" then
+        assert(type(spec.path) == "string", "[resources] single spec.path required")
         return Runtime.load_strict(spec.path)
 
     elseif spec.type == "associate" then
+        assert(type(spec.order_path)  == "string", "[resources] associate order_path required")
+        assert(type(spec.boards_path) == "string", "[resources] associate boards_path required")
+
         local order_rt = Runtime.load_strict(spec.order_path)
         local board_rt = Runtime.load_strict(spec.boards_path)
+
         return Runtime.associate(order_rt, board_rt)
 
     else
@@ -62,101 +72,80 @@ function Resources:load_entry(entry)
     end
 end
 
-------------------------------------------------------------
+----------------------------------------------------------------
+-- Internal Helpers
+----------------------------------------------------------------
+
+---@private
+---@param role string
+---@param path string
+---@param id string|nil
+---@return table
+local function build_single_descriptor(role, path, id)
+    return {
+        id   = id,
+        kind = role,
+        load_spec = {
+            type = "single",
+            path = path
+        }
+    }
+end
+
+---@private
+---@param role string
+---@param root AppFSResult
+---@param id_pattern string|nil
+---@return table
+local function scan_directory(role, root, id_pattern)
+
+    local inspection = root:inspect()
+    if not inspection.exists() or not inspection.is_directory() then
+        return {}
+    end
+
+    local out = {}
+
+    for _, path in ipairs(root:files()) do
+        local id
+
+        if id_pattern then
+            id = path:match(id_pattern)
+        else
+            id = path:match("([^/]+)$")
+        end
+
+        if id then
+            table.insert(out, build_single_descriptor(role, path, id))
+        end
+    end
+
+    return out
+end
+
+----------------------------------------------------------------
 -- System Store Scan (DESCRIPTORS ONLY)
-------------------------------------------------------------
+----------------------------------------------------------------
 
 ---@return table
 function Resources:pull_system()
 
-    local fs    = self.__app:fs()
-    local store = fs:store()
+    local store = self.__app:fs():store()
 
-    local system_resources = {}
-
-    local function ensure_role(role)
-        if not system_resources[role] then
-            system_resources[role] = {}
-        end
-        return system_resources[role]
-    end
-
-    ------------------------------------------------------------
-    -- Vendor
-    ------------------------------------------------------------
-    do
-        local root = store:vendor()
-        local inspection = root:inspect()
-
-        if inspection.exists() and inspection.is_directory() then
-            for _, path in ipairs(root:files()) do
-                local id = path:match("([^/]+)%.csv$")
-                if id then
-                    table.insert(ensure_role("vendor"), {
-                        id   = id,
-                        kind = "vendor",
-                        load_spec = {
-                            type = "single",
-                            path = path
-                        }
-                    })
-                end
-            end
-        end
-    end
-
-    ------------------------------------------------------------
-    -- Ledger
-    ------------------------------------------------------------
-    do
-        local root = store:ledger()
-        local inspection = root:inspect()
-
-        if inspection.exists() and inspection.is_directory() then
-            for _, path in ipairs(root:files()) do
-                local id = path:match("([^/]+)$")
-                table.insert(ensure_role("ledger"), {
-                    id   = id,
-                    kind = "ledger",
-                    load_spec = {
-                        type = "single",
-                        path = path
-                    }
-                })
-            end
-        end
-    end
-
-    ------------------------------------------------------------
-    -- Client
-    ------------------------------------------------------------
-    do
-        local root = store:client()
-        local inspection = root:inspect()
-
-        if inspection.exists() and inspection.is_directory() then
-            for _, path in ipairs(root:files()) do
-                local id = path:match("([^/]+)$")
-                table.insert(ensure_role("client"), {
-                    id   = id,
-                    kind = "client",
-                    load_spec = {
-                        type = "single",
-                        path = path
-                    }
-                })
-            end
-        end
-    end
+    local system_resources = {
+        vendor = scan_directory("vendor", store:vendor(), "([^/]+)%.csv$"),
+        ledger = scan_directory("ledger", store:ledger()),
+        client = scan_directory("client", store:client()),
+    }
 
     self.__state.resources.system = system_resources
 
     return { status = "system resources registered" }
 end
 
-------------------------------------------------------------
+----------------------------------------------------------------
 -- User Inputs → Canonical Resource Descriptors
-------------------------------------------------------------
+----------------------------------------------------------------
 
 ---@return table
 function Resources:pull_user_from_inputs()
@@ -173,31 +162,38 @@ function Resources:pull_user_from_inputs()
 
     for role, descriptor in pairs(inputs) do
 
+        assert(type(descriptor) == "table",
+            "[resources] invalid input descriptor for role: " .. tostring(role))
+
+        --------------------------------------------------------
+        -- Job
+        --------------------------------------------------------
         if role == "job" then
-            local entry
 
             if descriptor.path then
-                entry = {
+                table.insert(ensure_role("job"), {
                     kind = "job",
                     load_spec = {
                         type = "single",
                         path = descriptor.path
                     }
-                }
+                })
             else
-                entry = {
+                table.insert(ensure_role("job"), {
                     kind = "job",
                     load_spec = {
                         type        = "associate",
                         order_path  = descriptor.order_path,
                         boards_path = descriptor.boards_path
                     }
-                }
+                })
             end
 
-            table.insert(ensure_role("job"), entry)
-
+        --------------------------------------------------------
+        -- Vendor
+        --------------------------------------------------------
         elseif role == "vendor" then
+
             table.insert(ensure_role("vendor"), {
                 id   = descriptor.name,
                 kind = "vendor",
@@ -207,7 +203,11 @@ function Resources:pull_user_from_inputs()
                 }
             })
 
+        --------------------------------------------------------
+        -- Client
+        --------------------------------------------------------
         elseif role == "client" then
+
             table.insert(ensure_role("client"), {
                 kind = "client",
                 load_spec = {
@@ -216,7 +216,11 @@ function Resources:pull_user_from_inputs()
                 }
             })
 
+        --------------------------------------------------------
+        -- Ledger
+        --------------------------------------------------------
         elseif role == "ledger" then
+
             table.insert(ensure_role("ledger"), {
                 kind = "ledger",
                 load_spec = {
@@ -232,9 +236,9 @@ function Resources:pull_user_from_inputs()
     return { status = "user resources registered" }
 end
 
-------------------------------------------------------------
+----------------------------------------------------------------
 -- Canonical Get API
-------------------------------------------------------------
+----------------------------------------------------------------
 
 ---@param scope "system"|"user"
 ---@param role string
@@ -245,14 +249,18 @@ function Resources:get(scope, role, identifier)
     assert(scope == "system" or scope == "user",
         "[resources] invalid scope")
 
-    assert(type(role) == "string",
+    assert(type(role) == "string" and role ~= "",
         "[resources] role required")
 
     local bucket = self.__state.resources[scope]
-    if not bucket then return nil end
+    if type(bucket) ~= "table" then
+        return nil
+    end
 
     local list = bucket[role]
-    if not list then return nil end
+    if type(list) ~= "table" then
+        return nil
+    end
 
     if not identifier then
         return list

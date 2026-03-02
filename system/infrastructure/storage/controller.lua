@@ -7,6 +7,7 @@ local Storage = {}
 
 local active_instance = "default"
 local cached_project_root = nil
+local override_project_root = nil
 
 ------------------------------------------------------------
 -- Internal Helpers
@@ -26,7 +27,6 @@ local function detect_project_root_containing_data()
     local dir = dirname(file_path)
     assert(dir, "[storage] failed to determine file directory")
 
-    -- Ensure the starting dir is absolute if possible.
     local function to_absolute(path)
         path = normalize_path(path or "")
 
@@ -34,7 +34,6 @@ local function detect_project_root_containing_data()
             return path
         end
 
-        -- Prefer filesystem-provided realpath/cwd if available.
         if type(FS.realpath) == "function" then
             local rp = FS.realpath(path)
             if type(rp) == "string" and #rp > 0 then
@@ -51,7 +50,6 @@ local function detect_project_root_containing_data()
             end
         end
 
-        -- Final fallback: OS pwd (kept minimal; only used if FS lacks realpath/cwd)
         local ok, pipe = pcall(io.popen, "pwd")
         if ok and pipe then
             local pwd = pipe:read("*l")
@@ -63,7 +61,6 @@ local function detect_project_root_containing_data()
             end
         end
 
-        -- If we can't resolve, return original (but this should be rare)
         return path
     end
 
@@ -85,9 +82,14 @@ local function detect_project_root_containing_data()
 end
 
 local function project_root()
+    if override_project_root then
+        return override_project_root
+    end
+
     if cached_project_root then
         return cached_project_root
     end
+
     cached_project_root = detect_project_root_containing_data()
     return cached_project_root
 end
@@ -95,12 +97,15 @@ end
 local function join2(a, b)
     a = normalize_path(a or "")
     b = normalize_path(b or "")
+
     if a:sub(-1) == "/" then
         a = a:sub(1, -2)
     end
+
     if b:sub(1, 1) == "/" then
         b = b:sub(2)
     end
+
     return a .. "/" .. b
 end
 
@@ -111,7 +116,8 @@ end
 ---Set active instance name.
 ---@param instance_name string
 function Storage.set_instance(instance_name)
-    assert(type(instance_name) == "string" and #instance_name > 0, "[storage] instance_name required")
+    assert(type(instance_name) == "string" and #instance_name > 0,
+        "[storage] instance_name required")
     active_instance = instance_name
 end
 
@@ -119,6 +125,15 @@ end
 ---@return string
 function Storage.instance()
     return active_instance
+end
+
+---Manually override detected project root (advanced/testing use).
+---@param path string
+function Storage.set_project_root(path)
+    assert(type(path) == "string" and #path > 0,
+        "[storage] project_root path required")
+
+    override_project_root = normalize_path(path)
 end
 
 ---Return project root containing /data.
@@ -136,7 +151,9 @@ end
 ---Ensure directory exists.
 ---@param dir_path string
 function Storage.ensure_dir(dir_path)
-    assert(type(dir_path) == "string" and #dir_path > 0, "[storage] dir_path required")
+    assert(type(dir_path) == "string" and #dir_path > 0,
+        "[storage] dir_path required")
+
     FS.ensure_parent_dir(normalize_path(dir_path) .. "/.keep")
 end
 

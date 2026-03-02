@@ -76,10 +76,19 @@ local ROLE_SCHEMA = {
 -- Constructor
 ----------------------------------------------------------------
 
+---@param state table
 ---@return AppDataInput
 function Input.new(state)
+    assert(type(state) == "table", "[data.input] state required")
+
+    state.inputs = state.inputs or {}
+    state.inputs.by_role = state.inputs.by_role or {}
+
     ---@type AppDataInput
-    local instance = setmetatable({ __state = state }, Input)
+    local instance = setmetatable({
+        __state = state
+    }, Input)
+
     return instance
 end
 
@@ -87,93 +96,48 @@ end
 -- Public API
 ----------------------------------------------------------------
 
----Set a resource input by role.
----Overwrites existing role.
+---Set input descriptor for a role.
+---Overwrites any existing descriptor for that role.
 ---@param role string
 ---@param payload table
 ---@return table descriptor
 function Input:set(role, payload)
+    assert(type(role) == "string" and role ~= "",
+        "[data.input] role required")
+
     local validator = ROLE_SCHEMA[role]
-    assert(validator, "[data.input] invalid role: " .. tostring(role))
+    assert(validator,
+        "[data.input] invalid role: " .. tostring(role))
 
     local descriptor = validator(payload)
 
     self.__state.inputs.by_role[role] = descriptor
 
-    -- AUTO PROMOTE
-    if self.__state.resources and self.__state.resources.user then
-        local function ensure_role(role_name)
-            local bucket = self.__state.resources.user
-            if not bucket[role_name] then
-                bucket[role_name] = {}
-            end
-            return bucket[role_name]
-        end
-
-        if role == "job" then
-            local entry
-
-            if descriptor.path then
-                entry = {
-                    kind = "job",
-                    load_spec = {
-                        type = "single",
-                        path = descriptor.path
-                    }
-                }
-            else
-                entry = {
-                    kind = "job",
-                    load_spec = {
-                        type        = "associate",
-                        order_path  = descriptor.order_path,
-                        boards_path = descriptor.boards_path
-                    }
-                }
-            end
-
-            table.insert(ensure_role("job"), entry)
-        elseif role == "vendor" then
-            table.insert(ensure_role("vendor"), {
-                kind      = "vendor",
-                id        = descriptor.name,
-                load_spec = {
-                    type = "single",
-                    path = descriptor.path
-                }
-            })
-        elseif role == "client" then
-            table.insert(ensure_role("client"), {
-                kind = "client",
-                path = descriptor.path
-            })
-        elseif role == "ledger" then
-            table.insert(ensure_role("ledger"), {
-                kind = "ledger",
-                path = descriptor.path
-            })
-        end
-    end
     return descriptor
 end
 
----Get descriptor by role.
+---Get descriptor for a role.
 ---@param role string
 ---@return table|nil
 function Input:get(role)
+    assert(type(role) == "string" and role ~= "",
+        "[data.input] role required")
+
     return self.__state.inputs.by_role[role]
 end
 
----Return full raw input map.
+---Return entire input map (by_role).
 ---@return table
 function Input:all()
     return self.__state.inputs.by_role
 end
 
----Clear one role or all.
+---Clear one role or all roles.
 ---@param role string|nil
 function Input:clear(role)
     if role then
+        assert(type(role) == "string",
+            "[data.input] role must be string")
         self.__state.inputs.by_role[role] = nil
     else
         self.__state.inputs.by_role = {}

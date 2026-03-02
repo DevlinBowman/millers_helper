@@ -26,6 +26,21 @@ Data.__index = Data
 ------------------------------------------------------------
 -- Constructor
 ------------------------------------------------------------
+---
+local function build_initial_state()
+    return {
+        vars = {},
+        inputs = { by_role = {} },
+        resources = {
+            user   = {},
+            system = {}
+        },
+        runtime = {
+            user   = {},
+            system = {},
+        }
+    }
+end
 
 ---@param app Surface
 ---@return AppDataFacade
@@ -34,18 +49,7 @@ function Data.new(app)
     local instance = setmetatable({
         __app = app,
 
-        __state = {
-            vars = {},
-            inputs = { by_role = {} },
-            resources = {
-                user   = {},
-                system = {}
-            },
-            runtime = {
-                user   = {},
-                system = {},
-            }
-        },
+        __state = build_initial_state(),
 
         __vars      = nil,
         __input     = nil,
@@ -136,6 +140,26 @@ function Data:vars()
         self.__vars = Vars.new(self.__state)
     end
     return self.__vars
+end
+
+---Submit external input into system and promote to resources.
+---@param role string
+---@param payload table
+---@return table
+function Data:submit(role, payload)
+
+    -- 1. register input
+    local descriptor = self:input():set(role, payload)
+
+    -- 2. rebuild user resources from current inputs
+    local result = self:resources():pull_user_from_inputs()
+
+    return {
+        ok = true,
+        role = role,
+        input = descriptor,
+        resource_status = result.status
+    }
 end
 
 ------------------------------------------------------------

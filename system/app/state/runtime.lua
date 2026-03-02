@@ -155,22 +155,6 @@ function RuntimeNS:require_many(scope, role, selectors)
     return out
 end
 
----Load all resources for (scope, role) into runtime (dense list returned).
----@param scope "system"|"user"
----@param role string
----@return table
-function RuntimeNS:require_all(scope, role)
-    local list = self:_ensure_list(scope, role)
-
-    -- Determine how many exist by loading until resources loader asserts?
-    -- We avoid guessing here; the injected loader will assert on missing entry.
-    -- So we use a conservative pass: keep loading while entries exist in resources
-    -- via resolve_index is not applicable. This function expects Data to inject
-    -- a loader that asserts missing entries; so we need a count from caller.
-    error("[data.runtime] require_all needs a count; use require_all_with_count(scope, role, count)", 2)
-
-    return list
-end
 
 ---Load first `count` entries for (scope, role).
 ---@param scope "system"|"user"

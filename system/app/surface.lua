@@ -18,11 +18,14 @@ local FSFacade       = require("system.app.facade.fs")
 local DataFacade     = require("system.app.facade.data")
 local ServicesFacade = require("system.app.facade.services")
 
+local API = require("system.app.api.controller")
+
 ---@class Surface
 ---@field private _instance string
 ---@field private _fs AppFSFacade|nil
 ---@field private _data AppDataFacade|nil
 ---@field private _services AppServicesFacade|nil
+---@field private _api AppAPI|nil
 local Surface = {}
 Surface.__index = Surface
 
@@ -38,9 +41,6 @@ function Surface.new(instance_name)
 
     -- Set active instance in storage layer
     Storage.set_instance(instance_name)
-
-    -- Ensure canonical directory layout exists
-    AppFS.ensure_instance_layout()
 
     return setmetatable({
         _instance = instance_name,
@@ -155,6 +155,13 @@ function Surface:services()
 
     ---@type AppServicesFacade
     return self._services
+end
+
+function Surface:api()
+    if not self._api then
+        self._api = API.new(self)
+    end
+    return self._api
 end
 
 return Surface

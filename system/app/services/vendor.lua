@@ -9,7 +9,10 @@ local Vendor = {}
 Vendor.__index = Vendor
 
 function Vendor.new(app)
-    return setmetatable({ __app = app }, Vendor)
+    return setmetatable({
+        __app = app,
+        __helpers = FSHelpers.new()
+    }, Vendor)
 end
 
 ------------------------------------------------------------
@@ -140,7 +143,7 @@ function Vendor:run(selector, opts)
     -- 5. Determine canonical target path
     ------------------------------------------------------------
 
-    local helpers     = FSHelpers.new()
+    local helpers = self.__helpers
     local vendor_root = self.__app:fs():store():vendor()
     local target_path = helpers:child(vendor_root, normalized .. ".csv")
 
