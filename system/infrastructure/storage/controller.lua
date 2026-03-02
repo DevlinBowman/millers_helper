@@ -26,6 +26,49 @@ local function detect_project_root_containing_data()
     local dir = dirname(file_path)
     assert(dir, "[storage] failed to determine file directory")
 
+    -- Ensure the starting dir is absolute if possible.
+    local function to_absolute(path)
+        path = normalize_path(path or "")
+
+        if path:match("^/") then
+            return path
+        end
+
+        -- Prefer filesystem-provided realpath/cwd if available.
+        if type(FS.realpath) == "function" then
+            local rp = FS.realpath(path)
+            if type(rp) == "string" and #rp > 0 then
+                return normalize_path(rp)
+            end
+        end
+
+        if type(FS.cwd) == "function" then
+            local cwd = FS.cwd()
+            if type(cwd) == "string" and #cwd > 0 then
+                cwd = normalize_path(cwd):gsub("/$", "")
+                path = path:gsub("^%./", "")
+                return cwd .. "/" .. path
+            end
+        end
+
+        -- Final fallback: OS pwd (kept minimal; only used if FS lacks realpath/cwd)
+        local ok, pipe = pcall(io.popen, "pwd")
+        if ok and pipe then
+            local pwd = pipe:read("*l")
+            pipe:close()
+            if type(pwd) == "string" and #pwd > 0 then
+                pwd = normalize_path(pwd):gsub("/$", "")
+                path = path:gsub("^%./", "")
+                return pwd .. "/" .. path
+            end
+        end
+
+        -- If we can't resolve, return original (but this should be rare)
+        return path
+    end
+
+    dir = to_absolute(dir)
+
     while dir do
         if FS.is_dir(dir .. "/data") then
             return dir
