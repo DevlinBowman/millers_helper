@@ -6,11 +6,11 @@
 ---@class AppDataResources
 ---@class AppDataRuntime
 
-local Vars      = require("system.app.data.vars")
-local Input     = require("system.app.data.input")
-local Resources = require("system.app.data.resources")
-local RuntimeNS = require("system.app.data.runtime")
-local Session   = require("system.app.data.session")
+local Vars      = require("system.app.state.vars")
+local Input     = require("system.app.state.input")
+local Resources = require("system.app.state.resources")
+local RuntimeNS = require("system.app.state.runtime")
+local Session   = require("system.app.state.session")
 
 ---@class AppDataFacade
 ---@field private __app Surface

@@ -14,9 +14,9 @@ local Storage  = require("system.infrastructure.storage.controller")
 local AppFS    = require("system.infrastructure.app_fs.controller")
 local Registry = require("system.infrastructure.app_fs.registry")
 
-local FSFacade       = require("system.app.fs")
-local DataFacade     = require("system.app.data")
-local ServicesFacade = require("system.app.services")
+local FSFacade       = require("system.app.facade.fs")
+local DataFacade     = require("system.app.facade.data")
+local ServicesFacade = require("system.app.facade.services")
 
 ---@class Surface
 ---@field private _instance string

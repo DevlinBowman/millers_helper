@@ -2,7 +2,7 @@
 
 local VendorRef      = require("core.domain.vendor_reference").controller
 local VendorRegistry = require("core.domain.vendor_reference").registry
-local FSHelpers      = require("system.app.fs_helpers")
+local FSHelpers      = require("system.app.fs.helpers")
 
 ---@class AppVendorService
 local Vendor = {}

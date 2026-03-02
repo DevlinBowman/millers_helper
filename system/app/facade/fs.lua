@@ -8,7 +8,7 @@
 local Storage      = require("system.infrastructure.storage.controller")
 local AppFS        = require("system.infrastructure.app_fs.controller")
 local Registry     = require("system.infrastructure.app_fs.registry")
-local HelpersFacade= require("system.app.fs_helpers")
+local HelpersFacade= require("system.app.fs.helpers")
 
 ----------------------------------------------------------------
 -- Store Namespace
