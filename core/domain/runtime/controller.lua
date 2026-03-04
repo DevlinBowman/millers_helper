@@ -16,9 +16,9 @@ local Trace        = require("tools.trace.trace")
 local LoadPipeline = require("core.domain.runtime.pipelines.load")
 local Helpers      = require("core.domain.runtime.internal.helpers")
 
-local Result = require("core.domain.runtime.result")
+local Result       = require("core.domain.runtime.result")
 
-local Controller = {}
+local Controller   = {}
 
 ----------------------------------------------------------------
 -- LOAD ENTRY
@@ -109,11 +109,12 @@ function Controller.associate(order_runtime, board_runtime, opts)
     end
 
     local new_batch = {
-        order  = order_batch.order,
-        boards = merged_boards,
-        meta   = {
+        order       = order_batch.order,
+        boards      = merged_boards,
+        allocations = {},
+        meta        = {
             name     = opts and opts.name
-                      or order_batch.meta and order_batch.meta.name,
+                or order_batch.meta and order_batch.meta.name,
             category = opts and opts.category or "order",
             io       = order_batch.meta and order_batch.meta.io
         }

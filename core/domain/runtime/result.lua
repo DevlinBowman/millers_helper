@@ -22,6 +22,7 @@ local BatchUtil = require("core.domain.runtime.internal.batch")
 ---@class RuntimeBatch
 ---@field order table
 ---@field boards table[]
+---@field allocations table[]
 ---@field meta RuntimeBatchMeta|nil
 
 ---@class RuntimeResult
@@ -148,6 +149,34 @@ function RuntimeResult:boards(index)
         local boards = self.__batches[i].boards or {}
         for j = 1, #boards do
             out[#out + 1] = boards[j]
+        end
+    end
+
+    return out
+end
+
+----------------------------------------------------------------
+-- Allocation Access
+----------------------------------------------------------------
+
+--- Returns allocations from specific batch,
+--- or all allocations across all batches if index omitted.
+---@param index integer|nil
+---@return table[]
+function RuntimeResult:allocations(index)
+
+    if index ~= nil then
+        local batch = self:batch(index)
+        return batch.allocations or {}
+    end
+
+    local out = {}
+
+    for i = 1, #self.__batches do
+        local allocations = self.__batches[i].allocations or {}
+
+        for j = 1, #allocations do
+            out[#out + 1] = allocations[j]
         end
     end
 

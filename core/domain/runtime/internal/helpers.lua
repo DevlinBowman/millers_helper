@@ -36,6 +36,7 @@ function Helpers.is_batch(value)
     return type(value) == "table"
         and type(value.order) == "table"
         and type(value.boards) == "table"
+        and (value.allocations == nil or type(value.allocations) == "table")
 end
 
 --- Determine if value is RuntimeBatch[].

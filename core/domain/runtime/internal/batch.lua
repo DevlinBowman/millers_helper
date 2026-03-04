@@ -58,6 +58,14 @@ function Batch.get_order(batches, index)
     return batch.order
 end
 
+function Batch.get_allocations(batches, index)
+    local batch = Batch.get_batch(batches, index)
+    if not batch then
+        return {}
+    end
+    return batch.allocations or {}
+end
+
 function Batch.get_field(batches, key, index)
     local batch = Batch.get_batch(batches, index)
     if not batch then

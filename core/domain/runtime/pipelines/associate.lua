@@ -54,10 +54,10 @@ function M.run(order_batches, board_batches, opts)
     local board_batch = board_batches[1]
 
     assert(type(order_batch.order) == "table",
-           "[associate] invalid order batch")
+        "[associate] invalid order batch")
 
     assert(type(board_batch.boards) == "table",
-           "[associate] invalid board batch")
+        "[associate] invalid board batch")
 
     ------------------------------------------------------------
     -- COPY BOARDS (NO MUTATION)
@@ -91,9 +91,10 @@ function M.run(order_batches, board_batches, opts)
     ------------------------------------------------------------
 
     local new_batch = {
-        order  = order_batch.order,
-        boards = merged_boards,
-        meta   = new_meta
+        order       = order_batch.order,
+        boards      = merged_boards,
+        allocations = {},
+        meta        = new_meta
     }
 
     ------------------------------------------------------------
@@ -101,10 +102,10 @@ function M.run(order_batches, board_batches, opts)
     ------------------------------------------------------------
 
     assert(type(new_batch.order) == "table",
-           "[associate] resulting batch missing order")
+        "[associate] resulting batch missing order")
 
     assert(type(new_batch.boards) == "table",
-           "[associate] resulting batch missing boards")
+        "[associate] resulting batch missing boards")
 
     return { new_batch }
 end

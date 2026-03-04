@@ -18,10 +18,42 @@ local function is_batch(v)
 end
 
 ----------------------------------------------------------------
+-- Canonical envelope enforcement
+----------------------------------------------------------------
+
+local function ensure_batch_envelope(batch)
+
+    ------------------------------------------------
+    -- allocations
+    ------------------------------------------------
+
+    if batch.allocations == nil then
+        batch.allocations = {}
+    end
+
+    ------------------------------------------------
+    -- meta
+    ------------------------------------------------
+
+    if batch.meta == nil then
+        batch.meta = {}
+    end
+
+    ------------------------------------------------
+    -- boards
+    ------------------------------------------------
+
+    if batch.boards == nil then
+        batch.boards = {}
+    end
+end
+
+----------------------------------------------------------------
 -- Error formatting (structured, deterministic)
 ----------------------------------------------------------------
 
 local function format_err(err, depth)
+
     depth = depth or 0
 
     if err == nil then
@@ -37,7 +69,6 @@ local function format_err(err, depth)
     end
 
     local lines = {}
-
     local indent = string.rep("  ", depth)
 
     if err.kind then
@@ -82,10 +113,8 @@ end
 -- Normalize any supported env into canonical batches
 ----------------------------------------------------------------
 
--- core/domain/runtime/pipelines/load.lua
--- function normalize(env)
-
 local function normalize(env)
+
     if type(env) ~= "table" then
         return nil, {
             kind    = "runtime_normalize_failure",
@@ -94,24 +123,33 @@ local function normalize(env)
         }
     end
 
-    -- IMPORTANT: propagate structured upstream error (do not stringify/throw)
+    -- propagate structured upstream error
     if env.ok == false then
         return nil, env
     end
 
+    ------------------------------------------------
     -- Envelope unwrap
+    ------------------------------------------------
+
     if env.codec == "lua_object" and type(env.data) == "table" then
         print("[load] unwrapping lua_object envelope")
         env = env.data
     end
 
+    ------------------------------------------------
     -- Single batch
+    ------------------------------------------------
+
     if is_batch(env) then
         print("[load] detected single batch -> wrapping into array")
         return { env }, nil
     end
 
+    ------------------------------------------------
     -- Batch array
+    ------------------------------------------------
+
     if type(env) == "table" and #env > 0 and is_batch(env[1]) then
         print(string.format("[load] detected %d batch(es)", #env))
         return env, nil
@@ -128,36 +166,40 @@ end
 -- Routing Decision
 ----------------------------------------------------------------
 
--- core/domain/runtime/pipelines/load.lua
--- function route(input)
-
 local function route(input)
+
     local env, err
 
-    ------------------------------------------------------------
+    ------------------------------------------------
     -- Raw string path
-    ------------------------------------------------------------
+    ------------------------------------------------
+
     if type(input) == "string" then
+
         print("[load] route: single file (string)")
         print("[load]   path -> " .. tostring(input))
 
         env, err = Ingest.read(input)
     end
 
-    ------------------------------------------------------------
+    ------------------------------------------------
     -- Single file spec
-    ------------------------------------------------------------
+    ------------------------------------------------
+
     if not env and type(input) == "table" and input.path then
+
         print("[load] route: single file (spec)")
         print("[load]   path -> " .. tostring(input.path))
 
         env, err = Ingest.read(input.path, input.opts)
     end
 
-    ------------------------------------------------------------
+    ------------------------------------------------
     -- Ledger index file
-    ------------------------------------------------------------
+    ------------------------------------------------
+
     if not env and type(input) == "table" and input.ledger_path then
+
         print("[load] route: ledger index file")
         print("[load]   ledger_path -> " .. tostring(input.ledger_path))
 
@@ -176,7 +218,9 @@ local function route(input)
         local batches = {}
 
         for _, entry in ipairs(index) do
+
             local bundle = Ledger.read_bundle(entry.transaction_id)
+
             batches[#batches + 1] = {
                 order  = bundle.order,
                 boards = bundle.boards,
@@ -186,26 +230,27 @@ local function route(input)
         env = { codec = "lua_object", data = batches }
     end
 
-    ------------------------------------------------------------
+    ------------------------------------------------
     -- Already envelope
-    ------------------------------------------------------------
+    ------------------------------------------------
+
     if not env and type(input) == "table" and input.codec == "lua_object" then
         print("[load] route: already lua_object envelope")
         env = input
     end
 
-    ------------------------------------------------------------
-    -- IMPORTANT: Treat structured failure env as failure
-    ------------------------------------------------------------
+    ------------------------------------------------
+    -- Upstream structured failure
+    ------------------------------------------------
+
     if type(env) == "table" and env.ok == false then
-        -- This is an upstream failure envelope (ex: ingest/decode/parser gate)
-        -- Return it as route_err so caller preserves structure.
         return nil, env
     end
 
-    ------------------------------------------------------------
+    ------------------------------------------------
     -- Failure
-    ------------------------------------------------------------
+    ------------------------------------------------
+
     if not env then
         return nil, err or {
             kind    = "unsupported_input_type",
@@ -218,23 +263,23 @@ local function route(input)
 end
 
 ----------------------------------------------------------------
--- Public Loader (callable module)
+-- Public Loader
 ----------------------------------------------------------------
 
 local LoadPipeline = {}
 
--- core/domain/runtime/pipelines/load.lua
--- function LoadPipeline.run(input)
-
 function LoadPipeline.run(input)
+
     print("\n[load] BEGIN")
 
-    ------------------------------------------------------------
+    ------------------------------------------------
     -- Route
-    ------------------------------------------------------------
+    ------------------------------------------------
+
     local env, route_err = route(input)
 
     if not env then
+
         print("[load] FAILED during route")
         print("[load] END\n")
 
@@ -246,10 +291,12 @@ function LoadPipeline.run(input)
         }
     end
 
-    ------------------------------------------------------------
-    -- Capture provenance BEFORE normalize unwraps env.data
-    ------------------------------------------------------------
+    ------------------------------------------------
+    -- Capture provenance
+    ------------------------------------------------
+
     local io_meta = nil
+
     if type(env) == "table"
         and type(env.meta) == "table"
         and type(env.meta.io) == "table"
@@ -257,14 +304,16 @@ function LoadPipeline.run(input)
         io_meta = env.meta.io
     end
 
-    ------------------------------------------------------------
-    -- Normalize (must be protected)
-    ------------------------------------------------------------
+    ------------------------------------------------
+    -- Normalize
+    ------------------------------------------------
+
     local ok, batches_or_err = pcall(function()
         return normalize(env)
     end)
 
     if not ok then
+
         print("[load] FAILED during normalize")
         print("[load] END\n")
 
@@ -278,13 +327,24 @@ function LoadPipeline.run(input)
 
     local batches = batches_or_err
 
-    ------------------------------------------------------------
+    ------------------------------------------------
+    -- Enforce canonical batch envelope
+    ------------------------------------------------
+
+    for i = 1, #batches do
+        ensure_batch_envelope(batches[i])
+    end
+
+    ------------------------------------------------
     -- Attach provenance
-    ------------------------------------------------------------
+    ------------------------------------------------
+
     if io_meta then
+
         for i = 1, #batches do
+
             local batch = batches[i]
-            batch.meta = batch.meta or {}
+
             if batch.meta.io == nil then
                 batch.meta.io = io_meta
             end
