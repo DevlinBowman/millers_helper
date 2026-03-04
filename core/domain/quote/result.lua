@@ -92,7 +92,7 @@ end
 ---@param opts table|nil
 ---@return string[]
 function QuoteResult:lines(opts)
-    local rendered = Format.render(self.__doc, opts)
+    local rendered = Format.render(self.__doc.__data or self.__doc, opts)
     return rendered.lines
 end
 
@@ -122,14 +122,14 @@ end
 ---@param opts table|nil
 ---@return table
 function QuoteResult:render_text(opts)
-    return Format.render(self.__doc, opts)
+    return Format.render(self.__doc.__data or self.__doc, opts)
 end
 
 --- Prints the rendered quote to stdout.
 ---@param opts table|nil
 ---@return QuoteResult
 function QuoteResult:print(opts)
-    local rendered = Format.render(self.__doc, opts)
+    local rendered = Format.render(self.__doc.__data or self.__doc, opts)
     for _, line in ipairs(rendered.lines) do
         print(line)
     end
