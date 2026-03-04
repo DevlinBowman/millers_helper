@@ -1,28 +1,7 @@
 -- core/domain/invoice/result.lua
---
--- InvoiceResult façade.
---
--- Wraps Invoice DTO and provides:
---   • Semantic accessors
---   • Totals meaning view
---   • Rendering helpers
---   • Policy helpers
 
 local Format = require("core.domain._priced_doc.internal.format_text")
 
-----------------------------------------------------------------
--- TotalsView
-----------------------------------------------------------------
--- Meaning-layer view over invoice aggregate totals.
-----------------------------------------------------------------
-
----@class InvoiceTotalsView
----@field private __data table
-local TotalsView = {}
-TotalsView.__index = TotalsView
-
----@param data table|nil
----@return InvoiceTotalsView
 ----------------------------------------------------------------
 -- TotalsView
 ----------------------------------------------------------------
@@ -36,7 +15,6 @@ TotalsView.__index = TotalsView
 function TotalsView.new(data)
     local raw = data or {}
 
-    -- copy raw values directly onto instance
     local instance = {
         bf    = raw.bf    or 0,
         count = raw.count or 0,
@@ -75,26 +53,36 @@ function InvoiceResult.new(dto)
 end
 
 ----------------------------------------------------------------
+-- Internal DTO Resolver (Minimal Addition)
+----------------------------------------------------------------
+
+---@private
+---@return table
+function InvoiceResult:_dto()
+    -- unwrap if wrapped in PricedDocument
+    return self.__data.__data or self.__data
+end
+
+----------------------------------------------------------------
 -- Semantic Accessors
 ----------------------------------------------------------------
 
 function InvoiceResult:id()
-    return self.__data.id
+    return self:_dto().id
 end
 
 function InvoiceResult:header()
-    return self.__data.header
+    return self:_dto().header
 end
 
 function InvoiceResult:lines(opts)
-    local rendered = Format.render(self.__data, opts)
+    local rendered = Format.render(self:_dto(), opts)
     return rendered.lines
 end
 
---- Returns a semantic totals view
 ---@return InvoiceTotalsView
 function InvoiceResult:totals()
-    return TotalsView.new(self.__data.totals)
+    return TotalsView.new(self:_dto().totals)
 end
 
 ----------------------------------------------------------------
@@ -102,11 +90,11 @@ end
 ----------------------------------------------------------------
 
 function InvoiceResult:render_text(opts)
-    return Format.render(self.__data, opts)
+    return Format.render(self:_dto(), opts)
 end
 
 function InvoiceResult:print(opts)
-    local rendered = Format.render(self.__data, opts)
+    local rendered = Format.render(self:_dto(), opts)
     for _, line in ipairs(rendered.lines) do
         print(line)
     end
@@ -118,7 +106,7 @@ end
 ----------------------------------------------------------------
 
 function InvoiceResult:is_priced()
-    for _, row in ipairs(self.__data.rows or {}) do
+    for _, row in ipairs(self:_dto().rows or {}) do
         if row.bf_price == nil or row.bf_price == 0 then
             return false
         end
