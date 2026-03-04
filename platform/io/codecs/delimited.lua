@@ -27,10 +27,19 @@ local Delimited = {}
 ---@return string[]
 local function split(line, sep)
     local out = {}
-    local pattern = string.format("([^%s]+)", sep)
+    local start = 1
 
-    for field in line:gmatch(pattern) do
-        out[#out + 1] = field
+    while true do
+        local i, j = line:find(sep, start, true)
+
+        if not i then
+            -- last field (may be empty)
+            out[#out + 1] = line:sub(start)
+            break
+        end
+
+        out[#out + 1] = line:sub(start, i - 1)
+        start = j + 1
     end
 
     return out
