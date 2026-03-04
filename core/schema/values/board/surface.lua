@@ -1,4 +1,4 @@
--- core/values/board/surface.lua
+-- core/schema/values/board/surface.lua
 --
 -- Canonical surface preparation classifications.
 -- Closed-world value universe.

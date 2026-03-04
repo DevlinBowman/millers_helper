@@ -1,9 +1,9 @@
--- core/engine/runtime/catalog.lua
+-- core/schema/engine/runtime/catalog.lua
 --
 -- Cross-domain schema query system.
 -- Provides semantic search over fields and values.
 
-local State = require("core.engine.runtime.state")
+local State = require("core.schema.engine.runtime.state")
 
 local Catalog = {}
 Catalog.__index = Catalog

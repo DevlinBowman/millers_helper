@@ -1,4 +1,4 @@
--- core/values/board/species.lua
+-- core/schema/values/board/species.lua
 --
 -- Canonical species classifications.
 

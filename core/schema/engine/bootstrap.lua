@@ -1,4 +1,4 @@
--- core/engine/bootstrap.lua
+-- core/schema/engine/bootstrap.lua
 --
 -- Declarative bootstrap list for the closed-world semantic system.
 -- Core consumes this and builds indexes.
@@ -24,35 +24,36 @@ Bootstrap.values = {
     -- Board Value Domains
     --------------------------------------------------------
 
-    "core.values.board.grade",
-    "core.values.board.moisture",
-    "core.values.board.species",
-    "core.values.board.surface",
+    "core.schema.values.board.grade",
+    "core.schema.values.board.moisture",
+    "core.schema.values.board.species",
+    "core.schema.values.board.surface",
 
     --------------------------------------------------------
     -- Order Value Domains
     --------------------------------------------------------
 
-    "core.values.order.status",
-    "core.values.order.use",
+    "core.schema.values.order.status",
+    "core.schema.values.order.use",
 
-    --------------------------------------------------------
+    ------------------------------------------------------------
     -- Transaction Value Domains
-    --------------------------------------------------------
+    ------------------------------------------------------------
 
-    "core.values.transaction.type",
+    "core.schema.values.transaction.type",
 
-    --------------------------------------------------------
+    ------------------------------------------------------------
     -- Allocation Value Domains
-    --------------------------------------------------------
-    "core.values.allocation.scope",
-    "core.values.allocation.basis",
+    ------------------------------------------------------------
 
-    --------------------------------------------------------
+    "core.schema.values.allocation.scope",
+    "core.schema.values.allocation.basis",
+
+    ------------------------------------------------------------
     -- Shared
-    --------------------------------------------------------
+    ------------------------------------------------------------
 
-    "core.values.tag",
+    "core.schema.values.tag",
 }
 
 ------------------------------------------------------------
@@ -61,11 +62,11 @@ Bootstrap.values = {
 
 Bootstrap.fields = {
 
-    "core.fields.board",
-    "core.fields.order",
-    "core.fields.transaction",
-    "core.fields.allocation",
-    "core.fields.batch",
+    "core.schema.fields.board",
+    "core.schema.fields.order",
+    "core.schema.fields.transaction",
+    "core.schema.fields.allocation",
+    "core.schema.fields.batch",
 }
 
 ------------------------------------------------------------
@@ -74,12 +75,12 @@ Bootstrap.fields = {
 
 Bootstrap.shapes = {
 
-    "core.shapes.board",
-    "core.shapes.order",
-    "core.shapes.transaction",
-    "core.shapes.allocation_profile",
-    "core.shapes.allocation_entry",
-    "core.shapes.batch",
+    "core.schema.shapes.board",
+    "core.schema.shapes.order",
+    "core.schema.shapes.transaction",
+    "core.schema.shapes.allocation_profile",
+    "core.schema.shapes.allocation_entry",
+    "core.schema.shapes.batch",
 }
 
 return Bootstrap

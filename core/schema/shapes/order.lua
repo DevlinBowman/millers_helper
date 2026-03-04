@@ -1,4 +1,4 @@
--- core/shapes/order.lua
+-- core/schema/shapes/order.lua
 --
 -- Order Shape
 -- Membership only.

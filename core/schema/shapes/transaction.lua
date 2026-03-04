@@ -1,4 +1,4 @@
--- core/shapes/transaction.lua
+-- core/schema/shapes/transaction.lua
 --
 -- transaction Shape Declaration
 

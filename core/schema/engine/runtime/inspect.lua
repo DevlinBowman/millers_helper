@@ -1,11 +1,11 @@
--- core/engine/runtime/inspect.lua
+-- core/schema/engine/runtime/inspect.lua
 --
 -- Semantic introspection utilities.
 -- Fields are authoritative.
 -- Shapes influence ordering only.
 
-local State    = require("core.engine.runtime.state")
-local Resolver = require("core.engine.runtime.resolver")
+local State    = require("core.schema.engine.runtime.state")
+local Resolver = require("core.schema.engine.runtime.resolver")
 
 local Inspect = {}
 

@@ -1,17 +1,17 @@
--- core/engine/core.lua
+-- core/schema/engine/core.lua
 
-local Bootstrap = require("core.engine.bootstrap")
-local Registry  = require("core.engine.registry")
+local Bootstrap = require("core.schema.engine.bootstrap")
+local Registry  = require("core.schema.engine.registry")
 
-local Indexer   = require("core.engine.runtime.indexer")
-local Domains   = require("core.engine.runtime.domains")
-local Inspect   = require("core.engine.runtime.inspect")
-local Validate  = require("core.engine.runtime.validation")
-local Resolver  = require("core.engine.runtime.resolver")
-local Catalog   = require("core.engine.runtime.catalog")
-local Audit     = require("core.engine.runtime.audit")
+local Indexer   = require("core.schema.engine.runtime.indexer")
+local Domains   = require("core.schema.engine.runtime.domains")
+local Inspect   = require("core.schema.engine.runtime.inspect")
+local Validate  = require("core.schema.engine.runtime.validation")
+local Resolver  = require("core.schema.engine.runtime.resolver")
+local Catalog   = require("core.schema.engine.runtime.catalog")
+local Audit     = require("core.schema.engine.runtime.audit")
 
-local DTO       = require("core.engine.dto")
+local DTO       = require("core.schema.engine.dto")
 
 local Core      = {}
 Core.__index    = Core

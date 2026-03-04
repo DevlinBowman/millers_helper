@@ -1,7 +1,7 @@
--- core/engine/runtime/indexer.lua
+-- core/schema/engine/runtime/indexer.lua
 
-local Registry = require("core.engine.registry")
-local State    = require("core.engine.runtime.state")
+local Registry = require("core.schema.engine.registry")
+local State    = require("core.schema.engine.runtime.state")
 
 local Indexer = {}
 

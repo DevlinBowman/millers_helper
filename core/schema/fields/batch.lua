@@ -1,4 +1,4 @@
--- core/fields/batch.lua
+-- core/schema/fields/batch.lua
 --
 -- Canonical runtime envelope field definitions.
 -- Represents the full batch object moving through the engine.

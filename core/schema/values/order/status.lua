@@ -1,4 +1,4 @@
--- core/values/order_status.lua
+-- core/schema/values/order_status.lua
 --
 -- Canonical order lifecycle statuses.
 

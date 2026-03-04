@@ -1,4 +1,4 @@
--- core/values/board/moisture.lua
+-- core/schema/values/board/moisture.lua
 --
 -- Moisture state classifications.
 

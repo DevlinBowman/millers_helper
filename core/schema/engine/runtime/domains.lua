@@ -1,6 +1,6 @@
--- core/engine/runtime/domains.lua
+-- core/schema/engine/runtime/domains.lua
 
-local State = require("core.engine.runtime.state")
+local State = require("core.schema.engine.runtime.state")
 
 local Domains = {}
 

@@ -1,4 +1,4 @@
--- core/shapes/batch.lua
+-- core/schema/shapes/batch.lua
 --
 -- Canonical structural definition for batch envelopes.
 

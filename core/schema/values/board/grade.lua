@@ -1,4 +1,4 @@
--- core/values/board/grade.lua
+-- core/schema/values/board/grade.lua
 --
 -- Canonical lumber grade combinations.
 --

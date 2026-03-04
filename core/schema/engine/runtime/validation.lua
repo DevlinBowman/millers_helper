@@ -1,10 +1,10 @@
--- core/engine/runtime/validation.lua
+-- core/schema/engine/runtime/validation.lua
 --
 -- Structural and semantic validation layer.
 -- Fields remain authoritative; shapes are optional.
 
-local State    = require("core.engine.runtime.state")
-local Resolver = require("core.engine.runtime.resolver")
+local State    = require("core.schema.engine.runtime.state")
+local Resolver = require("core.schema.engine.runtime.resolver")
 
 local Validation = {}
 

@@ -1,5 +1,5 @@
-local Resolver = require("core.engine.runtime.resolver")
-local State    = require("core.engine.runtime.state")
+local Resolver = require("core.schema.engine.runtime.resolver")
+local State    = require("core.schema.engine.runtime.state")
 
 local Walker = {}
 

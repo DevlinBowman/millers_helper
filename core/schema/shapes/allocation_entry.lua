@@ -1,4 +1,4 @@
--- core/shapes/allocation_entry.lua
+-- core/schema/shapes/allocation_entry.lua
 --
 -- Allocation Entry Shape
 -- Membership only.

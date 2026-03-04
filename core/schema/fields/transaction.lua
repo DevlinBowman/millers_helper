@@ -1,4 +1,4 @@
--- core/fields/transaction.lua
+-- core/schema/fields/transaction.lua
 --
 -- Transaction Meta Definition Space
 --

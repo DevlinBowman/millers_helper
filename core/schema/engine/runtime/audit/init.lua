@@ -1,9 +1,9 @@
--- core/engine/runtime/audit/init.lua
+-- core/schema/engine/runtime/audit/init.lua
 --
 -- Public audit surface.
 
-local Audit    = require("core.engine.runtime.audit.audit")
-local Printers = require("core.engine.runtime.audit.printers")
+local Audit    = require("core.schema.engine.runtime.audit.audit")
+local Printers = require("core.schema.engine.runtime.audit.printers")
 
 local Surface = {}
 

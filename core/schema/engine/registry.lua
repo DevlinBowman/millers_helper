@@ -1,4 +1,4 @@
--- core/engine/registry.lua
+-- core/schema/engine/registry.lua
 --
 -- Raw record sink for values + fields + shapes.
 -- Core indexes Registry into fast lookup structures.

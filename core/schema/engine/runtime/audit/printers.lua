@@ -1,7 +1,7 @@
--- core/engine/runtime/audit/printers.lua
+-- core/schema/engine/runtime/audit/printers.lua
 
-local Walker = require("core.engine.runtime.walker")
-local State  = require("core.engine.runtime.state")
+local Walker = require("core.schema.engine.runtime.walker")
+local State  = require("core.schema.engine.runtime.state")
 
 local Printers = {}
 
@@ -83,8 +83,8 @@ end
 
 function Printers.table(domain, obj)
 
-    local Walker = require("core.engine.runtime.walker")
-    local State  = require("core.engine.runtime.state")
+    local Walker = require("core.schema.engine.runtime.walker")
+    local State  = require("core.schema.engine.runtime.state")
 
     ------------------------------------------------
     -- helpers

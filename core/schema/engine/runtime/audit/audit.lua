@@ -1,14 +1,14 @@
--- core/engine/runtime/audit/audit.lua
+-- core/schema/engine/runtime/audit/audit.lua
 --
 -- Generic object auditing and schema comparison.
 
-local Validate = require("core.engine.runtime.validation")
-local Inspect  = require("core.engine.runtime.inspect")
+local Validate = require("core.schema.engine.runtime.validation")
+local Inspect  = require("core.schema.engine.runtime.inspect")
 
-local Resolver = require("core.engine.runtime.resolver")
-local State    = require("core.engine.runtime.state")
+local Resolver = require("core.schema.engine.runtime.resolver")
+local State    = require("core.schema.engine.runtime.state")
 
-local Printers = require("core.engine.runtime.audit.printers")
+local Printers = require("core.schema.engine.runtime.audit.printers")
 
 local Audit = {}
 

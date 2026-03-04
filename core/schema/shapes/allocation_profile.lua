@@ -1,4 +1,4 @@
--- core/shapes/allocation_profile.lua
+-- core/schema/shapes/allocation_profile.lua
 --
 -- Allocation Profile Shape
 -- Membership only.

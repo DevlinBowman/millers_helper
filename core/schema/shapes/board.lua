@@ -1,4 +1,4 @@
--- core/shapes/board.lua
+-- core/schema/shapes/board.lua
 --
 -- Board Shape
 -- Membership only.

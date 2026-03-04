@@ -1,4 +1,4 @@
--- core/values/transaction/type.lua
+-- core/schema/values/transaction/type.lua
 --
 -- Canonical transaction Transaction Types
 

@@ -1,4 +1,4 @@
--- core/engine/dto.lua
+-- core/schema/engine/dto.lua
 --
 -- DTO: runtime wrapper over Core domain definitions.
 -- Enforces:
@@ -7,8 +7,8 @@
 --   • basic type checks
 --   • optional strict reference validation (closed-world symbols)
 
-local Resolver = require("core.engine.runtime.resolver")
-local Validate = require("core.engine.runtime.validation")
+local Resolver = require("core.schema.engine.runtime.resolver")
+local Validate = require("core.schema.engine.runtime.validation")
 
 ---@class DTO
 ---@field private _domain string
@@ -131,7 +131,7 @@ function DTO:set(key, value, opts)
             return false, "reference_domain_not_found:" .. field.reference
         end
 
-        local values = require("core.engine.runtime.state").values[ref_domain]
+        local values = require("core.schema.engine.runtime.state").values[ref_domain]
         if not values or not values.lookup[value] then
             return false, "field_value_not_allowed:" .. field.name
         end

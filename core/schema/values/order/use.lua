@@ -1,4 +1,4 @@
--- core/values/order_use.lua
+-- core/schema/values/order_use.lua
 --
 -- Canonical order intent classifications.
 

@@ -1,4 +1,4 @@
--- core/reference/dimension.lua
+-- core/schema/reference/dimension.lua
 --
 -- Engineering reference dataset for dimensional lumber.
 -- Not part of semantic validation.

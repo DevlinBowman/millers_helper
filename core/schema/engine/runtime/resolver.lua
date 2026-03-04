@@ -1,6 +1,6 @@
--- core/engine/runtime/resolver.lua
+-- core/schema/engine/runtime/resolver.lua
 
-local State = require("core.engine.runtime.state")
+local State = require("core.schema.engine.runtime.state")
 
 local Resolver = {}
 
@@ -8,7 +8,7 @@ local Resolver = {}
 -- domain fields
 ------------------------------------------------
 
--- core/engine/runtime/resolver.lua
+-- core/schema/engine/runtime/resolver.lua
 -- function: Resolver.domain_fields
 
 function Resolver.domain_fields(domain)

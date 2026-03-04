@@ -1,4 +1,4 @@
--- core/reference/kerf.lua
+-- core/schema/reference/kerf.lua
 --
 -- Physical saw kerf reference data.
 -- Engineering dataset only.
