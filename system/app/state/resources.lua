@@ -1,6 +1,7 @@
 -- system/app/data/resources.lua
 
 local Runtime = require("core.domain.runtime").controller
+local Schema = require("system.app.state.resource_schema")
 
 ---@class AppDataResources
 ---@field private __app Surface
@@ -273,6 +274,49 @@ function Resources:get(scope, role, identifier)
     end
 
     return nil
+end
+
+---Return single descriptor or a nested field of it.
+---Errors if none or more than one descriptor exists.
+---@param scope ResourceScope
+---@param role ResourceRole
+---@param field ResourceField|nil
+---@return any
+function Resources:get_one(scope, role, field)
+
+    Schema.assert_scope(scope)
+    Schema.assert_role(role)
+
+    local list = self:get(scope, role)
+
+    assert(type(list) == "table",
+        "[resources] no descriptors for " .. scope .. "." .. role)
+
+    if #list ~= 1 then
+        error(
+            "[resources] expected exactly 1 descriptor for "
+            .. scope .. "." .. role
+            .. " but found " .. tostring(#list),
+            2
+        )
+    end
+
+    local descriptor = list[1]
+
+    if not field then
+        return descriptor
+    end
+
+    assert(type(field) == "string" and field ~= "",
+        "[resources] field must be string")
+
+    local location = Schema.assert_field(role, field)
+
+    if location == "direct" then
+        return descriptor[field]
+    elseif location == "load_spec" then
+        return descriptor.load_spec and descriptor.load_spec[field]
+    end
 end
 
 return Resources

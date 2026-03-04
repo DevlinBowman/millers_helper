@@ -4,6 +4,7 @@ local VendorService  = require("system.app.services.vendor")
 local InvoiceService = require("system.app.services.invoice")
 local QuoteService   = require("system.app.services.quote")
 local CompareService = require("system.app.services.compare")
+local LedgerService  = require("system.app.services.ledger")
 
 ---@class AppServicesFacade
 ---@field private __app Surface
@@ -19,6 +20,8 @@ function Services.new(app)
         __vendor  = nil,
         __invoice = nil,
         __quote   = nil,
+        __compare = nil,
+        __ledger  = nil,
     }, Services)
 end
 
@@ -63,13 +66,16 @@ function Services:compare()
     return self.__compare
 end
 
-------------------------------------------------------------
--- Inspect
-------------------------------------------------------------
+function Services:ledger()
+    if not self.__ledger then
+        self.__ledger = LedgerService.new(self.__app)
+    end
+    return self.__ledger
+end
 
 function Services:inspect()
     return {
-        capabilities = { "vendor", "invoice", "quote" }
+        capabilities = { "vendor", "invoice", "quote", "compare", "ledger" }
     }
 end
 

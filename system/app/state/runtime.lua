@@ -1,4 +1,4 @@
--- system/app/data/runtime.lua
+-- system/app/state/runtime.lua
 
 ---@class AppDataRuntime
 ---@field private __state table
@@ -6,6 +6,10 @@
 ---@field private __resolve_index fun(scope:"system"|"user", role:string, id:string): integer|nil
 local RuntimeNS = {}
 RuntimeNS.__index = RuntimeNS
+
+------------------------------------------------------------
+-- Constructor
+------------------------------------------------------------
 
 ---@param state table
 ---@param loader fun(scope:"system"|"user", role:string, index:integer): any
@@ -20,13 +24,16 @@ function RuntimeNS.new(state, loader, resolve_index)
     state.runtime.system = state.runtime.system or {}
     state.runtime.user = state.runtime.user or {}
 
-    ---@type AppDataRuntime
     return setmetatable({
         __state         = state,
         __loader        = loader,
         __resolve_index = resolve_index,
     }, RuntimeNS)
 end
+
+------------------------------------------------------------
+-- Internal Helpers
+------------------------------------------------------------
 
 ---@private
 ---@param scope "system"|"user"
@@ -48,6 +55,7 @@ end
 ---@param selector integer|string|nil
 ---@return integer
 function RuntimeNS:_coerce_index(scope, role, selector)
+
     if selector == nil then
         return 1
     end
@@ -59,19 +67,27 @@ function RuntimeNS:_coerce_index(scope, role, selector)
 
     if type(selector) == "string" then
         local idx = self.__resolve_index(scope, role, selector)
-        assert(idx ~= nil, "[data.runtime] unknown id for " .. scope .. "." .. role .. ": " .. selector)
+        assert(idx ~= nil,
+            "[data.runtime] unknown id for "
+            .. scope .. "." .. role .. ": " .. selector)
         return idx
     end
 
-    error("[data.runtime] selector must be integer index, string id, or nil", 2)
+    error("[data.runtime] selector must be integer, string id, or nil", 2)
 end
+
+------------------------------------------------------------
+-- Core Runtime Storage API
+------------------------------------------------------------
 
 ---@param scope "system"|"user"
 ---@param role string
 ---@param index integer
 ---@param envelope any
 function RuntimeNS:set(scope, role, index, envelope)
-    assert(type(index) == "number" and index >= 1, "[data.runtime] index must be >= 1")
+    assert(type(index) == "number" and index >= 1,
+        "[data.runtime] index must be >= 1")
+
     local list = self:_ensure_list(scope, role)
     list[index] = envelope
 end
@@ -81,9 +97,10 @@ end
 ---@param index integer
 ---@return any|nil
 function RuntimeNS:get(scope, role, index)
-    assert(type(index) == "number" and index >= 1, "[data.runtime] index must be >= 1")
-    local rt = self.__state.runtime
-    local bucket = rt and rt[scope]
+    assert(type(index) == "number" and index >= 1,
+        "[data.runtime] index must be >= 1")
+
+    local bucket = self.__state.runtime[scope]
     local list = bucket and bucket[role]
     return list and list[index] or nil
 end
@@ -100,16 +117,16 @@ end
 ---@param role string
 ---@param index integer
 function RuntimeNS:clear(scope, role, index)
-    assert(type(index) == "number" and index >= 1, "[data.runtime] index must be >= 1")
-    local rt = self.__state.runtime
-    local bucket = rt and rt[scope]
+    assert(type(index) == "number" and index >= 1,
+        "[data.runtime] index must be >= 1")
+
+    local bucket = self.__state.runtime[scope]
     local list = bucket and bucket[role]
     if list then
         list[index] = nil
     end
 end
 
----Return runtime list for a given scope+role (may be sparse).
 ---@param scope "system"|"user"
 ---@param role string
 ---@return table
@@ -117,36 +134,88 @@ function RuntimeNS:all(scope, role)
     return self:_ensure_list(scope, role)
 end
 
----Lazy-load runtime envelope aligned to resources[scope][role][index].
----selector can be:
----  • nil       => index 1
----  • integer   => index
----  • string    => entry.id (resolved to index)
+------------------------------------------------------------
+-- Context Resolution Layer
+------------------------------------------------------------
+
+---@private
+---@param scope "system"|"user"
+---@param role string
+---@param envelope any
+---@return any
+function RuntimeNS:_resolve_context(scope, role, envelope)
+
+    local slots = self.__state.slots
+    local selected =
+        slots
+        and slots.selection
+        and slots.selection[scope]
+        and slots.selection[scope][role]
+
+    if type(selected) ~= "number" then
+        print(string.format(
+            "[RuntimeNS] %s.%s → default batch 1",
+            scope, role
+        ))
+        return envelope
+    end
+
+    if type(envelope.__batches) ~= "table" then
+        return envelope
+    end
+
+    local total = #envelope.__batches
+    local effective = envelope.__batches[selected] and selected or 1
+
+    print(string.format(
+        "[RuntimeNS]ctx %s.%s → slot batch %d (effective %d of %d)",
+        scope, role, selected, effective, total
+    ))
+
+    return setmetatable({}, {
+        __index = function(_, key)
+            if key == "batch" then
+                return function()
+                    return envelope.__batches[effective]
+                end
+            end
+            return envelope[key]
+        end
+    })
+end
+------------------------------------------------------------
+-- Public Require API
+------------------------------------------------------------
+
 ---@param scope "system"|"user"
 ---@param role string
 ---@param selector integer|string|nil
 ---@return any
 function RuntimeNS:require(scope, role, selector)
+
     local index = self:_coerce_index(scope, role, selector)
 
-    local cached = self:get(scope, role, index)
-    if cached ~= nil then
-        return cached
+    local envelope = self:get(scope, role, index)
+    if not envelope then
+        envelope = self.__loader(scope, role, index)
+        self:set(scope, role, index, envelope)
     end
 
-    local loaded = self.__loader(scope, role, index)
-    self:set(scope, role, index, loaded)
-    return loaded
+    -- Context-aware return
+    return self:_resolve_context(scope, role, envelope)
 end
 
----Load multiple runtime envelopes in one call (order preserved).
----selectors is an array of (integer|string|nil).
+------------------------------------------------------------
+-- Bulk Helpers
+------------------------------------------------------------
+
 ---@param scope "system"|"user"
 ---@param role string
 ---@param selectors table
 ---@return table
 function RuntimeNS:require_many(scope, role, selectors)
-    assert(type(selectors) == "table", "[data.runtime] selectors table required")
+    assert(type(selectors) == "table",
+        "[data.runtime] selectors table required")
 
     local out = {}
     for i = 1, #selectors do
@@ -155,14 +224,13 @@ function RuntimeNS:require_many(scope, role, selectors)
     return out
 end
 
-
----Load first `count` entries for (scope, role).
 ---@param scope "system"|"user"
 ---@param role string
 ---@param count integer
 ---@return table
 function RuntimeNS:require_all_with_count(scope, role, count)
-    assert(type(count) == "number" and count >= 0, "[data.runtime] count must be number >= 0")
+    assert(type(count) == "number" and count >= 0,
+        "[data.runtime] count must be >= 0")
 
     local out = {}
     for i = 1, count do

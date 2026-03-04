@@ -11,6 +11,7 @@ local Input     = require("system.app.state.input")
 local Resources = require("system.app.state.resources")
 local RuntimeNS = require("system.app.state.runtime")
 local Session   = require("system.app.state.session")
+local Slots     = require("system.app.state.slots")
 
 ---@class AppDataFacade
 ---@field private __app Surface
@@ -20,8 +21,9 @@ local Session   = require("system.app.state.session")
 ---@field private __resources AppDataResources|nil
 ---@field private __runtime AppDataRuntime|nil
 ---@field private __session AppDataSession|nil
-local Data = {}
-Data.__index = Data
+---@field private __slots AppDataSlots|nil
+local Data      = {}
+Data.__index    = Data
 
 ------------------------------------------------------------
 -- Constructor
@@ -30,6 +32,7 @@ Data.__index = Data
 local function build_initial_state()
     return {
         vars = {},
+        slots = {},
         inputs = { by_role = {} },
         resources = {
             user   = {},
@@ -47,11 +50,12 @@ end
 function Data.new(app)
     ---@type AppDataFacade
     local instance = setmetatable({
-        __app = app,
+        __app       = app,
 
-        __state = build_initial_state(),
+        __state     = build_initial_state(),
 
         __vars      = nil,
+        __slots     = nil,
         __input     = nil,
         __resources = nil,
         __runtime   = nil,
@@ -95,7 +99,9 @@ function Data:runtime()
             list = assert(list, "[data.runtime] missing resource list: " .. tostring(scope) .. "." .. tostring(role))
 
             local entry = list[index]
-            entry = assert(entry, "[data.runtime] missing resource entry: " .. tostring(scope) .. "." .. tostring(role) .. "[" .. tostring(index) .. "]")
+            entry = assert(entry,
+                "[data.runtime] missing resource entry: " ..
+                tostring(scope) .. "." .. tostring(role) .. "[" .. tostring(index) .. "]")
 
             return resources:load_entry(entry)
         end
@@ -142,12 +148,19 @@ function Data:vars()
     return self.__vars
 end
 
+---@return AppDataSlots
+function Data:slots()
+    if not self.__slots then
+        self.__slots = Slots.new(self.__state)
+    end
+    return self.__slots
+end
+
 ---Submit external input into system and promote to resources.
 ---@param role string
 ---@param payload table
 ---@return table
 function Data:submit(role, payload)
-
     -- 1. register input
     local descriptor = self:input():set(role, payload)
 
@@ -172,7 +185,8 @@ function Data:inspect()
         vars      = self.__state.vars,
         inputs    = self.__state.inputs.by_role,
         resources = self.__state.resources,
-        runtime   = self.__state.runtime
+        runtime   = self.__state.runtime,
+        slots     = self.__state.slots
     }
 end
 
