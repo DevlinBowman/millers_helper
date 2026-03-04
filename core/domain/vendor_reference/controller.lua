@@ -25,6 +25,26 @@ local function assert_table(x, name)
     end
 end
 
+-- file: core/domain/vendor_reference/controller.lua
+-- function: Controller.run
+
+local Run = require("core.domain.vendor_reference.pipelines.run")
+
+function Controller.run(vendor_name, data, target, opts)
+    Trace.contract_enter("core.domain.vendor_reference.controller.run")
+
+    assert(type(vendor_name) == "string" and vendor_name ~= "",
+        "[vendor_reference] vendor_name required")
+
+    assert(type(target) == "string" and target ~= "",
+        "[vendor_reference] target required")
+
+    local out = Run.run(vendor_name, data, target, opts or {})
+
+    Trace.contract_leave()
+    return out
+end
+
 ----------------------------------------------------------------
 -- UPDATE ENTRY (Batch-Based)
 ----------------------------------------------------------------
