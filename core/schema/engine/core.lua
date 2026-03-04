@@ -37,17 +37,18 @@ end
 ------------------------------------------------
 
 function Core.new()
+
     Indexer.build()
 
-    local self           = setmetatable({}, Core)
+    local self = setmetatable({}, Core)
 
     ------------------------------------------------
     -- validation
     ------------------------------------------------
 
-    self.exists          = Validate.exists
-    self.validate        = Validate.validate
-    self.check           = Validate.check
+    self.exists   = Validate.exists
+    self.validate = Validate.validate
+    self.check    = Validate.check
 
     ------------------------------------------------
     -- inspection
@@ -57,15 +58,24 @@ function Core.new()
     self.inspect_compact = Inspect.inspect_compact
 
     ------------------------------------------------
-    -- schema access
+    -- resolver (schema navigation)
     ------------------------------------------------
 
-    function self.field(domain, name)
-        return Resolver.field(domain, name)
-    end
+    self.field         = Resolver.field
+    self.value         = Resolver.value
+    self.domain_fields = Resolver.domain_fields
+    self.reference     = Resolver.reference
 
-    function self.domain_fields(domain)
-        return Resolver.domain_fields(domain)
+    ------------------------------------------------
+    -- value domain helpers
+    ------------------------------------------------
+
+    function self.domain_values(domain)
+        local node = require("core.schema.engine.runtime.state").values[domain]
+        if not node then
+            return nil
+        end
+        return node.list
     end
 
     ------------------------------------------------
@@ -73,6 +83,7 @@ function Core.new()
     ------------------------------------------------
 
     function self.template(domain)
+
         local fields = Resolver.domain_fields(domain)
 
         if not fields then
@@ -82,11 +93,13 @@ function Core.new()
         local obj = {}
 
         for _, name in ipairs(fields) do
+
             local f = Resolver.field(domain, name)
 
             if f then
                 obj[f.name] = f.default
             end
+
         end
 
         return obj
@@ -101,7 +114,7 @@ function Core.new()
     self.print_domains = Domains.print
 
     ------------------------------------------------
-    -- DTO creation
+    -- DTO
     ------------------------------------------------
 
     function self.dto(domain, data)
@@ -109,15 +122,15 @@ function Core.new()
     end
 
     ------------------------------------------------
-    -- catalog / semantic query system
+    -- catalog
     ------------------------------------------------
 
     function self.catalog()
         return Catalog.new()
     end
 
-    function self.get(query)
-        return self.catalog():get(query)
+    function self.get(name)
+        return self.catalog():get(name)
     end
 
     function self.list(query)
@@ -125,10 +138,11 @@ function Core.new()
     end
 
     ------------------------------------------------
-    -- auditing / comparison tools
+    -- audit
     ------------------------------------------------
 
     function self.audit(domain, obj)
+
         local report = Audit.run(domain, obj)
 
         return {
@@ -154,7 +168,9 @@ function Core.new()
             compare = function(other)
                 return Audit.compare(domain, obj, other)
             end
+
         }
+
     end
 
     function self.audit_dataset(domain, list)
