@@ -92,31 +92,43 @@ function CompareResult.new(dto)
 end
 
 ----------------------------------------------------------------
+-- Internal DTO Resolver
+----------------------------------------------------------------
+-- Unwraps model if future pipelines wrap it in a document façade.
+----------------------------------------------------------------
+
+---@private
+---@return table
+function CompareResult:_dto()
+    return self.__data.__data or self.__data
+end
+
+----------------------------------------------------------------
 -- Semantic Accessors
 ----------------------------------------------------------------
 
 --- Returns comparison rows (one per order board).
 ---@return table[]
 function CompareResult:rows()
-    return self.__data.rows or {}
+    return self:_dto().rows or {}
 end
 
 --- Returns the raw totals map (source -> { total = number }).
 ---@return table
 function CompareResult:totals_raw()
-    return self.__data.totals or {}
+    return self:_dto().totals or {}
 end
 
 --- Returns a semantic totals view for this compare result.
 ---@return CompareTotalsView
 function CompareResult:totals()
-    return TotalsView.new(self.__data.totals)
+    return TotalsView.new(self:_dto().totals)
 end
 
 --- Returns the underlying model DTO (escape hatch).
 ---@return table
 function CompareResult:model()
-    return self.__data
+    return self:_dto()
 end
 
 ----------------------------------------------------------------
@@ -127,7 +139,7 @@ end
 ---@param opts table|nil
 ---@return string[]
 function CompareResult:lines(opts)
-    local rendered = FormatPipe.run(self.__data, opts)
+    local rendered = FormatPipe.run(self:_dto(), opts)
     return rendered.lines or {}
 end
 
@@ -135,7 +147,7 @@ end
 ---@param opts table|nil
 ---@return table
 function CompareResult:render_text(opts)
-    return FormatPipe.run(self.__data, opts)
+    return FormatPipe.run(self:_dto(), opts)
 end
 
 --- Prints rendered output to stdout.
@@ -155,14 +167,14 @@ end
 --- Returns true if the model structure is valid per compare.shape.
 ---@return boolean
 function CompareResult:is_valid()
-    local ok = Registry.shape.validate_model(self.__data)
+    local ok = Registry.shape.validate_model(self:_dto())
     return ok == true
 end
 
 --- Throws if the model structure is invalid per compare.shape.
 ---@return CompareResult
 function CompareResult:require_valid()
-    local ok, err = Registry.shape.validate_model(self.__data)
+    local ok, err = Registry.shape.validate_model(self:_dto())
     assert(ok, "[compare] invalid model: " .. tostring(err))
     return self
 end
