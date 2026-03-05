@@ -1,4 +1,4 @@
--- core/model/pricing/internal/market_adapter.lua
+-- core/model/pricing/internal/adapters/market_adapter.lua
 --
 -- Adapts canonical board batches into pricing match bundle.
 

@@ -1,19 +1,16 @@
--- core/model/pricing/internal/engine.lua
+-- core/model/pricing/internal/engines/hybrid_market.lua
 --
--- Pure pricing suggestion engine.
--- Consumes compare_model (NOT raw vendor boards).
+-- Hybrid pricing basis:
+--   cost model + compare model market targeting.
 --
--- Flow:
---   1) cost floor
---   2) nonlinear factor multiplier
---   3) read vendor pricing from compare_model
---   4) discount ladder per board
---   5) recommendation = max(cost_model, market_target)
+-- Requires:
+--   boards(kind="boards")
+--   compare(kind="compare")
 
-local Curve = require("core.model.pricing.internal.curve")
-local Grade = require("core.enums.grades")
+local Schema   = require("core.schema")
+local PricingModel = require("core.model.pricing.controller")
 
-local Engine = {}
+local Hybrid = {}
 
 ----------------------------------------------------------------
 -- Utilities
@@ -81,18 +78,25 @@ end
 
 local function resolve_grade(grade_key)
 
-    local g = Grade.get(grade_key)
+    if type(grade_key) ~= "string" then
+        return { factor = 1.0, source = "grade_missing" }
+    end
 
-    if not g or g.kind ~= "grade" then
+    local value =
+        Schema.controller
+            .value("board.grade", grade_key)
+            :value()
+
+    if not value then
         return { factor = 1.0, source = "grade_not_found" }
     end
 
     return {
-        factor = g.value or 1.0,
-        source = "enum_value",
-        grade_value = g.value,
-        zone = g.zone,
-        grain = g.grain,
+        factor = value.value or 1.0,
+        source = "schema_value",
+        grade_value = value.value,
+        zone = value.zone,
+        grain = value.grain,
     }
 end
 
@@ -102,7 +106,8 @@ local function resolve_piecewise(curve, value)
         return { factor = 1.0 }
     end
 
-    return Curve.match_piecewise(curve, value)
+    return PricingModel.curve_match_piecewise(curve, value)
+
 end
 
 local function resolve_custom(profile, board, opts)
@@ -130,6 +135,7 @@ local function resolve_custom(profile, board, opts)
         waste = waste,
         rush  = rush,
         small = small,
+        enabled = true,
     }
 end
 
@@ -158,18 +164,18 @@ local function board_factors(profile, board, opts)
 end
 
 ----------------------------------------------------------------
--- Market Extraction (from compare_model)
+-- Market Extraction (from compare envelope)
 ----------------------------------------------------------------
 
-local function extract_market_from_compare(compare_model, index, discount_points, requested_discount)
+local function extract_market_from_compare(compare_env, index, discount_points, requested_discount)
 
-    if not compare_model
-    or type(compare_model.rows) ~= "table"
-    or not compare_model.rows[index] then
+    if not compare_env
+    or type(compare_env.rows) ~= "table"
+    or not compare_env.rows[index] then
         return nil
     end
 
-    local row = compare_model.rows[index]
+    local row = compare_env.rows[index]
 
     for source_name, offer in pairs(row.offers or {}) do
 
@@ -202,9 +208,23 @@ end
 -- Public API
 ----------------------------------------------------------------
 
-function Engine.suggest(boards, cost_surface, profile, compare_model, opts)
+function Hybrid.run(env)
 
-    opts = opts or {}
+    local profile = env.profile
+    assert(type(profile) == "table", "[pricing.hybrid_market] profile required")
+
+    local boards = PricingModel.envelope_items(env.boards, "boards", "boards")
+
+    local compare_meta = env.compare
+    assert(type(compare_meta) == "table", "[pricing.hybrid_market] compare envelope required")
+    assert(compare_meta.kind == "compare", "[pricing.hybrid_market] compare.kind must be 'compare'")
+
+    local compare_model = compare_meta.model or compare_meta -- allow {kind="compare", model=...} or direct model
+
+    local opts = env.opts or {}
+
+    local cost_surface = opts.cost_surface or { cost_per_bf = 0 }
+    assert(type(cost_surface) == "table", "[pricing.hybrid_market] opts.cost_surface table required")
 
     local floor = cost_floor_per_bf(cost_surface, profile)
     local discount_points = profile.retail_discount_points or {0,10,20}
@@ -253,6 +273,7 @@ function Engine.suggest(boards, cost_surface, profile, compare_model, opts)
     end
 
     return {
+        basis = "hybrid_market",
         profile_id = profile.profile_id,
         cost_floor_per_bf = round2(floor),
         per_board = per_board,
@@ -260,4 +281,4 @@ function Engine.suggest(boards, cost_surface, profile, compare_model, opts)
     }
 end
 
-return Engine
+return Hybrid

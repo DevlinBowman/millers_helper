@@ -1,110 +1,64 @@
 -- core/model/pricing/controller.lua
+--
+-- Pricing Model Controller
+--
+-- Exposes pure pricing math utilities.
+-- No domain orchestration.
 
-local Contract = require("core.contract")
 local Trace    = require("tools.trace.trace")
 
 local Registry = require("core.model.pricing.registry")
 
 local Controller = {}
 
-Controller.CONTRACT = {
-    build_profile = {
-        in_  = { profile_id = true },
-        out  = { profile = true },
-    },
-    suggest = {
-        in_  = {
-            boards        = true,
-            cost_surface  = true,
-            profile       = true,
-            ["matches?"]  = true,
-            ["opts?"]     = true,
-        },
-        out  = { suggestion = true },
-    },
-    format_suggestion = {
-        in_  = { suggestion = true },
-        out  = { text = true },
-    },
-}
-
 ----------------------------------------------------------------
--- Profile build
+-- Profile Builder
 ----------------------------------------------------------------
 
-function Controller.build_profile(profile_id)
+function Controller.profile_build(profile_id)
 
-    Trace.contract_enter("core.model.pricing.controller.build_profile")
-    Trace.contract_in({ profile_id = profile_id })
+    Trace.contract_enter("core.model.pricing.controller.profile_build")
 
-    local function run()
-        assert(type(profile_id) == "string", "Pricing.build_profile(): profile_id required")
+    assert(type(profile_id) == "string", "profile_id required")
 
-        Contract.assert({ profile_id = profile_id }, Controller.CONTRACT.build_profile.in_)
+    local preset = Registry.presets[profile_id]
+    assert(preset, "unknown pricing profile: " .. profile_id)
 
-        local preset = Registry.presets[profile_id]
-        assert(preset, "unknown pricing profile: " .. profile_id)
+    local resolved =
+        Registry.resolve.run(preset, Registry.presets)
 
-        local resolved   = Registry.resolve.run(preset, Registry.presets)
-        local normalized = Registry.schema.normalize_profile(resolved)
+    local normalized =
+        Registry.schema.normalize_profile(resolved)
 
-        Registry.validate.run(normalized, Registry.schema)
+    Registry.validate.run(normalized, Registry.schema)
 
-        Contract.assert({ profile = normalized }, Controller.CONTRACT.build_profile.out)
-        Trace.contract_out({ profile = normalized })
-
-        return { profile = normalized }
-    end
-
-    local ok, result = pcall(run)
     Trace.contract_leave()
-    if not ok then error(result, 0) end
-    return result
+
+    return normalized
 end
 
 ----------------------------------------------------------------
--- Suggest prices
+-- Curve utilities
 ----------------------------------------------------------------
 
-function Controller.suggest(boards, cost_surface, profile, matches, opts)
+function Controller.curve_match_piecewise(curve, value)
+    return Registry.curve.match_piecewise(curve, value)
+end
 
-    Trace.contract_enter("core.model.pricing.controller.suggest")
-    Trace.contract_in({
-        boards = boards,
-        cost_surface = cost_surface,
-        profile = profile,
-        matches = matches,
-        opts = opts,
-    })
-
-    local function run()
-        assert(type(boards) == "table", "Pricing.suggest(): boards table required")
-        assert(type(cost_surface) == "table", "Pricing.suggest(): cost_surface table required")
-        assert(type(profile) == "table", "Pricing.suggest(): profile table required")
-        if matches ~= nil then assert(type(matches) == "table", "Pricing.suggest(): matches must be table|nil") end
-        if opts ~= nil then assert(type(opts) == "table", "Pricing.suggest(): opts must be table|nil") end
-
-        local suggestion = Registry.engine.suggest(boards, cost_surface, profile, matches, opts)
-
-        Contract.assert({ suggestion = suggestion }, Controller.CONTRACT.suggest.out)
-        Trace.contract_out({ suggestion = suggestion })
-
-        return { suggestion = suggestion }
-    end
-
-    local ok, result = pcall(run)
-    Trace.contract_leave()
-    if not ok then error(result, 0) end
-    return result
+function Controller.curve_match_map(map, key)
+    return Registry.curve.match_map(map, key)
 end
 
 ----------------------------------------------------------------
--- Formatter (returns string)
+-- Envelope helpers
 ----------------------------------------------------------------
 
-function Controller.format_suggestion(suggestion)
-    local text = Registry.format.suggestion(suggestion)
-    return { text = text }
+function Controller.envelope_items(env, expected_kind, label)
+    return Registry.envelope.items(env, expected_kind, label)
+end
+
+function Controller.envelope_meta(env, expected_kind, label)
+    return Registry.envelope.meta(env, expected_kind, label)
 end
 
 return Controller

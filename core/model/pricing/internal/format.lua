@@ -1,6 +1,6 @@
 -- core/model/pricing/internal/format.lua
 --
--- Pure string formatter for pricing suggestions (per-board model).
+-- Pure string formatter for pricing result (per-board).
 
 local Format = {}
 
@@ -24,113 +24,77 @@ local function fmt_piecewise(info)
     )
 end
 
-local function fmt_grade(info)
-    if type(info) ~= "table" then return "n/a" end
-    return string.format(
-        "key=%s  source=%s  factor=%s",
-        tostring(info.input_key),
-        tostring(info.source),
-        fmt(info.factor)
-    )
-end
-
 ----------------------------------------------------------------
 -- Main Formatter
 ----------------------------------------------------------------
 
-function Format.suggestion(s)
+function Format.result(r)
 
-    assert(type(s) == "table", "Format.suggestion(): suggestion required")
+    assert(type(r) == "table", "Format.result(): result required")
 
     local out = {}
 
     out[#out + 1] = "\n=============================="
-    out[#out + 1] = "PRICE SUGGESTION"
+    out[#out + 1] = "PRICING RESULT"
     out[#out + 1] = "==============================\n"
 
-    kv(out, "Profile", tostring(s.profile_id))
-    kv(out, "Cost floor ($/bf)", fmt(s.cost_floor_per_bf))
+    kv(out, "Basis", tostring(r.basis))
+    kv(out, "Profile", tostring(r.profile_id))
 
-    out[#out + 1] = ""
-    kv(out, "Opts.waste_ratio", tostring(s.opts and s.opts.waste_ratio))
-    kv(out, "Opts.rush_level", tostring(s.opts and s.opts.rush_level))
-    kv(out, "Opts.market_target_discount", tostring(s.opts and s.opts.market_target_discount))
+    if type(r.cost_floor_per_bf) == "number" then
+        kv(out, "Cost floor ($/bf)", fmt(r.cost_floor_per_bf))
+    end
 
     out[#out + 1] = "\nPer-board analysis:"
 
-    for _, b in ipairs(s.per_board or {}) do
+    for _, b in ipairs(r.per_board or {}) do
 
         out[#out + 1] = "\n----------------------------------------"
         out[#out + 1] = "BOARD: " .. tostring(b.label)
-
-        local dims = b.factors and b.factors.inputs
-        out[#out + 1] = string.format(
-            "area=%s  length=%s  min_face=%s  grade=%s",
-            tostring(dims and dims.area_in2 or "?"),
-            tostring(dims and dims.length_ft or "?"),
-            tostring(dims and dims.min_face_in or "?"),
-            tostring(dims and dims.grade or "?")
-        )
 
         --------------------------------------------------------
         -- Cost Math
         --------------------------------------------------------
 
         local m = b.math or {}
-
         out[#out + 1] = ""
-        kv(out, "Cost floor ($/bf)", fmt(m.cost_floor_per_bf))
-        kv(out, "Final price ($/bf)", fmt(m.final_price_per_bf))
+        if m.cost_floor_per_bf ~= nil then kv(out, "Cost floor ($/bf)", fmt(m.cost_floor_per_bf)) end
+        if m.final_price_per_bf ~= nil then kv(out, "Final price ($/bf)", fmt(m.final_price_per_bf)) end
 
         --------------------------------------------------------
         -- Factors
         --------------------------------------------------------
 
-        local f = b.factors or {}
+        local f = b.factors
 
-        out[#out + 1] = "\nFactors:"
-        kv(out, "Grade", fmt_grade(f.grade))
-        kv(out, "Size", fmt_piecewise(f.size))
-        kv(out, "Length", fmt_piecewise(f.length))
+        if type(f) == "table" then
+            out[#out + 1] = "\nFactors:"
+            if f.grade then kv(out, "Grade factor", fmt(f.grade.factor)) end
+            if f.size then kv(out, "Size", fmt_piecewise(f.size)) end
+            if f.length then kv(out, "Length", fmt_piecewise(f.length)) end
 
-        if f.custom and f.custom.enabled then
-            kv(out, "Waste", fmt_piecewise(f.custom.waste))
-            kv(out, "Rush", fmt_piecewise(f.custom.rush))
-            kv(out, "Small piece", fmt_piecewise(f.custom.small))
-        else
-            kv(out, "Custom", "disabled")
+            if f.custom and f.custom.enabled then
+                kv(out, "Waste", fmt_piecewise(f.custom.waste))
+                kv(out, "Rush", fmt_piecewise(f.custom.rush))
+                kv(out, "Small piece", fmt_piecewise(f.custom.small))
+            end
+
+            if f.multiplier_total ~= nil then
+                kv(out, "Multiplier total", fmt(f.multiplier_total))
+            end
         end
-
-        kv(out, "Multiplier total", fmt(f.multiplier_total))
 
         --------------------------------------------------------
         -- Market
         --------------------------------------------------------
 
         local market = b.market
-
-        out[#out + 1] = "\nMarket:"
-
-        if market and market.match then
-            kv(out, "Matched vendor", tostring(market.match))
-            kv(out, "Match signal", tostring(market.signal))
-            kv(out, "Retail ($/bf)", fmt(market.retail_bf_price))
-
-            if type(market.ladder) == "table" then
-                local keys = {}
-                for d in pairs(market.ladder) do keys[#keys + 1] = d end
-                table.sort(keys)
-
-                for _, d in ipairs(keys) do
-                    out[#out + 1] = string.format(
-                        "  %3d%% off -> %8s",
-                        d,
-                        fmt(market.ladder[d])
-                    )
-                end
-            end
-        else
-            out[#out + 1] = "  no match"
+        if market then
+            out[#out + 1] = "\nMarket:"
+            if market.match then kv(out, "Matched vendor", tostring(market.match)) end
+            if market.signal then kv(out, "Match signal", tostring(market.signal)) end
+            if market.retail_bf_price then kv(out, "Retail ($/bf)", fmt(market.retail_bf_price)) end
+            if market.requested_target then kv(out, "Target ($/bf)", fmt(market.requested_target)) end
         end
 
         --------------------------------------------------------
