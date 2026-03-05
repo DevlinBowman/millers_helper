@@ -5,7 +5,7 @@
 --
 -- Pure logic.
 
-local BoardMatcher = require("core.domain.compare.internal.matcher")
+local BoardMatcher = require("core.model.board_equivalence.matcher")
 
 local Model = {}
 
