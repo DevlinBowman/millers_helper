@@ -27,17 +27,14 @@ local Controller   = {}
 --- Loads runtime from input source.
 ---@param input any
 ---@param opts table|nil { name?:string, category?:string }
----@return RuntimeResult|nil, string|nil
+---@return RuntimeResult
 function Controller.load(input, opts)
     Trace.contract_enter("core.domain.runtime.controller.load")
 
     local batches, err =
         Helpers.resolve_batches(input, LoadPipeline.run)
 
-    if not batches then
-        Trace.contract_leave()
-        return nil, err
-    end
+    assert(batches, err or "[runtime.load] failed to resolve batches")
 
     if opts then
         for i = 1, #batches do
