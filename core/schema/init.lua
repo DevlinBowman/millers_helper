@@ -1,5 +1,3 @@
-local Controller = require("core.schema.controller")
+local Surface = require("core.schema.api.surface")
 
-return {
-    controller = Controller,
-}
+return Surface

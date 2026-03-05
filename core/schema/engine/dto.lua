@@ -103,47 +103,78 @@ end
 ---@param opts? { strict?: boolean }
 ---@return boolean ok, string|nil err
 function DTO:set(key, value, opts)
+
     opts = opts or {}
+
+    ------------------------------------------------
+    -- resolve field (alias → canonical)
+    ------------------------------------------------
 
     local field = Resolver.field(self._domain, key)
 
-    -- Unknown field: reject by default (schema is ultimate authority)
+    ------------------------------------------------
+    -- unknown field
+    ------------------------------------------------
+
     if not field then
+
         if opts.strict == false then
             self._data[key] = value
             return true, nil
         end
+
         return false, "unknown_field:" .. tostring(key)
     end
+
+    ------------------------------------------------
+    -- mutability policy
+    ------------------------------------------------
 
     if field.mutable == false then
         return false, "field_not_mutable:" .. field.name
     end
 
+    ------------------------------------------------
+    -- primitive type check
+    ------------------------------------------------
+
     if not type_ok(field.type, value) then
         return false, "field_type_mismatch:" .. field.name
     end
 
-    -- strict closed-world symbol validation only when reference exists
+    ------------------------------------------------
+    -- strict symbol validation
+    ------------------------------------------------
+
     if opts.strict and value ~= nil and field.reference then
+
         local ref_domain = Resolver.reference(field.reference, self._domain)
+
         if not ref_domain then
             return false, "reference_domain_not_found:" .. field.reference
         end
 
-        local values = require("core.schema.engine.runtime.state").values[ref_domain]
-        if not values or not values.lookup[value] then
+        local enum = Resolver.value(ref_domain, value)
+
+        if not enum then
             return false, "field_value_not_allowed:" .. field.name
         end
 
-        -- reject alias usage
-        local enum = values.lookup[value]
+        ------------------------------------------------
+        -- reject alias usage (canonical only)
+        ------------------------------------------------
+
         if enum.name ~= value then
             return false, "alias_not_allowed:" .. field.name
         end
     end
 
+    ------------------------------------------------
+    -- canonical write
+    ------------------------------------------------
+
     self._data[field.name] = value
+
     return true, nil
 end
 

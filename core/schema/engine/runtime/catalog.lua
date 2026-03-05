@@ -107,7 +107,33 @@ end
 -- get item by name
 ------------------------------------------------
 
+------------------------------------------------
+-- get item by name
+------------------------------------------------
+
 function Catalog:get(name)
+
+    if not name then
+        return nil
+    end
+
+    ------------------------------------------------
+    -- qualified lookup (split last dot)
+    ------------------------------------------------
+
+    local domain, item_name = name:match("^(.*)%.([^%.]+)$")
+
+    if domain and item_name then
+        for _, item in ipairs(self.items) do
+            if item.domain == domain and item.name == item_name then
+                return item
+            end
+        end
+    end
+
+    ------------------------------------------------
+    -- fallback simple-name lookup
+    ------------------------------------------------
 
     for _, item in ipairs(self.items) do
         if item.name == name then

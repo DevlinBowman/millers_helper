@@ -1,4 +1,4 @@
--- core/meta/board.lua
+-- core/schema/fields/board.lua
 --
 -- Board Meta Definition Space
 --
