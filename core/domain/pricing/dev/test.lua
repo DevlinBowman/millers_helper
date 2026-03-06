@@ -1,9 +1,8 @@
 local I        = require("inspector")
 local Backend  = require("system.backend")
 
-local Runtime  = require("core.domain.runtime").controller
 local Pricing  = require("core.domain.pricing").controller
-local Format   = require("core.model.pricing.internal.format")
+local Board    = require("core.model.board").controller
 
 ------------------------------------------------------------
 -- Boot Backend
@@ -24,88 +23,90 @@ app:data():submit("job", {
     path = "/Users/ven/Desktop/2026-lumber-app-v3/data/test_inputs/compiled_lumber_orders.csv"
 })
 
--- Specify Vendor Data
--- load resource into Runtime
-app:data():runtime():pull("system", 'vendor')
--- collect list of vendor batchs from runtime
-local ven_data = app:data():runtime():batches('system', 'vendor')
--- I.print(ven_data)
+------------------------------------------------------------
+-- Load vendor runtime data
+------------------------------------------------------------
 
+app:data():runtime():pull("system", "vendor")
+local vendors = app:data():runtime():batches("system", "vendor")
 
--- Specify User Data
--- load resource into runtime
-app:data():runtime():pull('user')
-local usr_data = app:data():runtime():batches('user', 'job')
+assert(vendors and #vendors > 0, "no vendor batches found")
 
+-- select first vendor
+local vendor = vendors[1]
 
-local batch  = usr_data[14]
+print("\nUsing Vendor:", vendor.id)
+
+------------------------------------------------------------
+-- Load user runtime data
+------------------------------------------------------------
+
+app:data():runtime():pull("user")
+local jobs = app:data():runtime():batches("user", "job")
+local target_batch_idx = 7
+local batch  = jobs[target_batch_idx]
 local boards = batch.boards
 
 print("\nLoaded boards:", #boards)
+
 ------------------------------------------------------------
--- Run vendor_anchor pricing against each vendor
+-- Run vendor_anchor pricing
 ------------------------------------------------------------
 
-for _, vendor in ipairs(ven_data) do
+local pricing_result =
+    Pricing.run(
+        boards,
+        "vendor_anchor",
+        {
+            profile = "default",
+            vendor = {
+                kind  = "vendor",
+                items = vendor.boards,
+                meta  = { name = vendor.id }
+            },
+            percentage = 10
+        }
+    )
 
-    print("\n==========================================")
-    print("Vendor Pricing Check:", vendor)
-    print("==========================================")
+------------------------------------------------------------
+-- Inspect pricing model (debug)
+------------------------------------------------------------
 
-    local pricing_result =
-        Pricing.run( boards, "vendor_anchor", {
-                profile = "default",
-                vendor = {
-                    kind  = "vendor",
-                    items = vendor.boards,
-                    meta  = { name = vendor.id }
-                },
-                percentage = 10
-            }
-        )
+local pricing_model = pricing_result:model():raw()
 
-    local formatted =
-        Format.result(pricing_result:model():raw())
+assert(type(pricing_model) == "table", "pricing model must be table")
 
-    print(formatted)
+print("\nPricing model snapshot:")
+I.print(pricing_model)
+
+------------------------------------------------------------
+-- Mutate runtime boards with computed prices
+------------------------------------------------------------
+
+local per_board = pricing_model.per_board
+
+assert(type(per_board) == "table", "pricing model missing per_board data")
+
+for i, board in ipairs(boards) do
+
+    local row = per_board[i]
+
+    if row and row.recommended_price_per_bf then
+        Board.mutate(board, {
+            bf_price = row.recommended_price_per_bf
+        })
+    end
 
 end
 
 ------------------------------------------------------------
--- Optional: run hybrid_market check
+-- Inspect updated runtime boards
 ------------------------------------------------------------
 
--- local cost_surface = {
---     cost_per_bf = 3.25
--- }
---
--- local hybrid_result =
---     Pricing.run(
---         boards,
---         "hybrid_market",
---         {
---             profile = "default",
---
---             compare = {
---                 kind = "compare",
---                 model = nil
---             },
---
---             opts = {
---                 cost_surface = cost_surface,
---                 waste_ratio = 0.05,
---                 rush_level = 0,
---                 market_target_discount = 15
---             }
---         }
---     )
---
--- print("\n==========================================")
--- print("Hybrid Market Pricing")
--- print("==========================================")
---
--- print(
---     Format.result(
---         hybrid_result:model():raw()
---     )
--- )
+print("\nRuntime boards after mutation:\n")
+
+for _, board in ipairs(boards) do
+    print(board.label, board.bf_price, board.ea_price)
+end
+
+I.print(app:data():runtime():all('user', 'job')[1].__batches[target_batch_idx].boards)
