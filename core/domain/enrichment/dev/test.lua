@@ -2,15 +2,13 @@
 
 local I       = require("inspector")
 local Backend = require("system.backend")
-local Schema  = require("core.schema")
-
 local Engine  = require("core.domain.enrichment.engine")
 
 ------------------------------------------------
 -- Boot app
 ------------------------------------------------
 
-local app     = Backend.run("default")
+local app = Backend.run("default")
 
 ------------------------------------------------
 -- Load job data
@@ -23,48 +21,52 @@ app:data():submit("job", {
 app:data():runtime():pull("system", "vendor")
 app:data():runtime():pull("user")
 
-
-local batch_idx = 8
+local batch_idx = 12
 local vendor = app:data():runtime():batches("system", "vendor")[1]
 local batch  = app:data():runtime():batches("user", "job")[batch_idx]
+I.print(batch)
 
 print("\nSelected batch:", batch_idx, "\n")
 
+local vendor_env = {
+    kind  = "vendor",
+    items = vendor.boards,
+    meta  = {
+        name = vendor.id
+    }
+}
 ------------------------------------------------
--- Run enrichment engine
+-- Execute enrichment
 ------------------------------------------------
 
-local result =
-    Engine.execute(
-        "batch",
-        batch,
-        {
-            profile = "default",
+local result = Engine.execute("batch", batch, {
+    pricing_basis = "vendor_anchor",
+    profile = "default",
+    vendor = vendor_env,
+    percentage = 10
+})
 
-            vendor = {
-                kind  = "vendor",
-                items = vendor.boards,
-                meta  = { name = vendor.id }
-            },
+-- local result = Engine.execute("batch", batch, {
+--     pricing_basis = "reverse_order_value",
+--     profile = "default"
+-- })
 
-            percentage = -10
-        }
-    )
+------------------------------------------------
+-- Inspect orchestration artifacts
+------------------------------------------------
 
--- print("\nRequests:")
+-- print("\nRequests:\n")
 -- I.print(result.requests)
 --
--- print("\nCapability diff tree:\n")
--- I.print(result.capabilities)
+-- print("\nTasks:\n")
+-- I.print(result.tasks)
 --
--- print("\nEnrichment requests:\n")
+-- print("\nPatches:\n")
+-- I.print(result.patches)
 --
--- if #result.requests == 0 then
---     print("No enrichment actions required.\n")
--- else
---     I.print(result.requests)
--- end
---
+-- print("\nSkipped:\n")
+-- I.print(result.skipped)
+
 ------------------------------------------------
 -- Inspect mutated runtime batch
 ------------------------------------------------
@@ -72,7 +74,6 @@ local result =
 print("\nMutated runtime boards:\n")
 
 for i, board in ipairs(batch.boards) do
-
     print(
         i,
         board.label,
@@ -80,11 +81,10 @@ for i, board in ipairs(batch.boards) do
         "ea:", board.ea_price,
         "lf:", board.lf_price
     )
-
 end
 
 print("\nFull runtime batch snapshot:\n")
-
-I.print(batch)
-
-I.print(Engine.run("batch", batch).capabilities)
+-- I.print(batch)
+--
+-- print("\nCapabilities after enrichment:\n")
+-- I.print(Engine.run("batch", batch).capabilities)

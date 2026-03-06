@@ -1,60 +1,55 @@
 -- core/domain/enrichment/executor.lua
 
-local Pricing = require("core.domain.pricing").controller
-local Board   = require("core.model.board").controller
+local Services = require("core.domain.enrichment.services")
 
 local Executor = {}
 
-function Executor.run(batch, tasks, opts)
-
+function Executor.run(object, tasks, opts)
     opts = opts or {}
 
-    for _,task in ipairs(tasks) do
+    local patches = {}
+    local skipped = {}
 
-        ------------------------------------------------
-        -- pricing
-        ------------------------------------------------
+    for _, task in ipairs(tasks or {}) do
+        local service = Services.get(task.service)
 
-        if task.service == "pricing" then
-
-            local result =
-                Pricing.run(
-                    batch.boards,
-                    opts.basis or "vendor_anchor",
-                    opts
-                )
-
-            local model = result:model():raw()
-
-            for _,index in ipairs(task.boards) do
-
-                local board = batch.boards[index]
-                local row   = model.per_board[index]
-
-                if board and row then
-
-                    Board.mutate(board,{
-                        bf_price = row.recommended_price_per_bf
-                    })
-
-                end
-
-            end
-
+        if not service then
+            skipped[#skipped + 1] = {
+                service = task.service,
+                scope   = task.scope,
+                reason  = "service_not_registered",
+            }
+            goto continue
         end
 
-        ------------------------------------------------
-        -- allocations (stub for now)
-        ------------------------------------------------
-
-        if task.service == "allocations" then
-
-            batch.allocations = batch.allocations or {}
-
+        if type(service.resolve) ~= "function" then
+            skipped[#skipped + 1] = {
+                service = task.service,
+                scope   = task.scope,
+                reason  = "service_missing_resolve",
+            }
+            goto continue
         end
 
+        local patch = service.resolve(object, task, opts)
+
+        if patch then
+            patches[#patches + 1] = patch
+        else
+            skipped[#skipped + 1] = {
+                service = task.service,
+                scope   = task.scope,
+                reason  = "service_returned_nil_patch",
+            }
+        end
+
+        ::continue::
     end
 
+    return {
+        patches = patches,
+        skipped = skipped,
+    }
 end
 
 return Executor

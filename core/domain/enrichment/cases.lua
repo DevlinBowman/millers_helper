@@ -2,8 +2,8 @@ local cases = {
     missing_board_prices = {
         target  = "batch",
         scope   = "boards",
-        message = "Board pricing fields are missing. Building pricing context.",
-        fields  = { group = "pricing" },
+        message = "Board bf_price is missing. Building pricing context.",
+        fields  = { names = { "bf_price" } },
         checks  = { "is_incomplete" },
         service = "pricing",
         package = "build_pricing_context"
