@@ -120,6 +120,19 @@ function Resolver.reference(reference, context_domain)
     end
 
     ------------------------------------------------
+    -- reference index fast path
+    ------------------------------------------------
+
+    local index = State.reference_index
+
+    if index then
+        local hit = index[reference]
+        if hit then
+            return hit
+        end
+    end
+
+    ------------------------------------------------
     -- fallback
     ------------------------------------------------
 

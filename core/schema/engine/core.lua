@@ -1,20 +1,31 @@
 -- core/schema/engine/core.lua
 
-local Bootstrap = require("core.schema.engine.bootstrap")
-local Registry  = require("core.schema.engine.registry")
+local Bootstrap      = require("core.schema.engine.bootstrap")
+local Registry       = require("core.schema.engine.registry")
 
-local Indexer   = require("core.schema.engine.runtime.indexer")
-local Domains   = require("core.schema.engine.runtime.domains")
-local Inspect   = require("core.schema.engine.runtime.inspect")
-local Validate  = require("core.schema.engine.runtime.validation")
-local Resolver  = require("core.schema.engine.runtime.resolver")
-local Catalog   = require("core.schema.engine.runtime.catalog")
-local Audit     = require("core.schema.engine.runtime.audit")
+local Indexer        = require("core.schema.engine.runtime.indexer")
+local Domains        = require("core.schema.engine.runtime.domains")
+local Inspect        = require("core.schema.engine.runtime.inspect")
+local Validate       = require("core.schema.engine.runtime.validation")
+local Resolver       = require("core.schema.engine.runtime.resolver")
+local Catalog        = require("core.schema.engine.runtime.catalog")
+local Audit          = require("core.schema.engine.runtime.audit")
 
-local DTO       = require("core.schema.engine.dto")
+local ReferenceIndex = require("core.schema.engine.runtime.reference_index")
 
-local Core      = {}
-Core.__index    = Core
+local DTO            = require("core.schema.engine.dto")
+
+---@class SchemaAuditHandle
+---@field report table
+---@field deep fun():table
+---@field tree fun():nil
+---@field table fun():nil
+---@field diff fun():table
+---@field compare fun(other:table):table
+---@field capabilities fun():table
+
+local Core           = {}
+Core.__index         = Core
 
 ------------------------------------------------
 -- bootstrap
@@ -37,18 +48,18 @@ end
 ------------------------------------------------
 
 function Core.new()
-
     Indexer.build()
+    ReferenceIndex.build()
 
-    local self = setmetatable({}, Core)
+    local self           = setmetatable({}, Core)
 
     ------------------------------------------------
     -- validation
     ------------------------------------------------
 
-    self.exists   = Validate.exists
-    self.validate = Validate.validate
-    self.check    = Validate.check
+    self.exists          = Validate.exists
+    self.validate        = Validate.validate
+    self.check           = Validate.check
 
     ------------------------------------------------
     -- inspection
@@ -61,10 +72,10 @@ function Core.new()
     -- resolver (schema navigation)
     ------------------------------------------------
 
-    self.field         = Resolver.field
-    self.value         = Resolver.value
-    self.domain_fields = Resolver.domain_fields
-    self.reference     = Resolver.reference
+    self.field           = Resolver.field
+    self.value           = Resolver.value
+    self.domain_fields   = Resolver.domain_fields
+    self.reference       = Resolver.reference
 
     ------------------------------------------------
     -- value domain helpers
@@ -83,7 +94,6 @@ function Core.new()
     ------------------------------------------------
 
     function self.template(domain)
-
         local fields = Resolver.domain_fields(domain)
 
         if not fields then
@@ -93,13 +103,11 @@ function Core.new()
         local obj = {}
 
         for _, name in ipairs(fields) do
-
             local f = Resolver.field(domain, name)
 
             if f then
                 obj[f.name] = f.default
             end
-
         end
 
         return obj
@@ -142,7 +150,6 @@ function Core.new()
     ------------------------------------------------
 
     function self.audit(domain, obj)
-
         local report = Audit.run(domain, obj)
 
         return {
@@ -167,10 +174,16 @@ function Core.new()
 
             compare = function(other)
                 return Audit.compare(domain, obj, other)
+            end,
+
+            capabilities = function()
+                local Capabilities =
+                    require("core.schema.engine.runtime.audit.capabilities")
+
+                return Capabilities.scan(domain, obj)
             end
 
         }
-
     end
 
     function self.audit_dataset(domain, list)
@@ -179,6 +192,5 @@ function Core.new()
 
     return self
 end
-
 
 return Core.new()

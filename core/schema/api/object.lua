@@ -144,7 +144,7 @@ end
 ---
 ---@param domain SchemaFieldDomain
 ---@param obj table
----@return table audit
+---@return SchemaAuditHandle
 function Object.audit(domain, obj)
     return Engine.audit(domain, obj)
 end
@@ -165,6 +165,44 @@ end
 ---@return table dataset_report
 function Object.audit_dataset(domain, list)
     return Engine.audit_dataset(domain, list)
+end
+
+------------------------------------------------
+-- missing field extraction
+------------------------------------------------
+
+---Return list of missing fields based on schema definition.
+---
+---Only reports fields that:
+---  • exist in the schema
+---  • are not present on the object
+---
+---Example:
+---  local missing = Object.missing("board", obj)
+---
+---@param domain SchemaFieldDomain
+---@param obj table
+---@return string[] missing
+function Object.missing(domain, obj)
+
+    assert(type(obj) == "table", "[schema.object.missing] obj must be table")
+
+    local fields = Engine.domain_fields(domain)
+    if not fields then
+        return {}
+    end
+
+    local missing = {}
+
+    for _, name in ipairs(fields) do
+
+        if obj[name] == nil then
+            missing[#missing + 1] = name
+        end
+
+    end
+
+    return missing
 end
 
 return Object
