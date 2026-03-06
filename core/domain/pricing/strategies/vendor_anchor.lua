@@ -30,14 +30,33 @@ end
 
 function VendorAnchor.run(env)
 
-    local profile = env.profile
-    assert(type(profile) == "table", "[pricing.vendor_anchor] profile required")
+    local boards_env = env.boards
+    assert(type(boards_env) == "table",
+        "[pricing.vendor_anchor] boards envelope required")
+    assert(boards_env.kind == "boards",
+        "[pricing.vendor_anchor] boards.kind must be 'boards'")
 
-    local boards =
-        PricingModel.envelope_items(env.boards, "boards", "boards")
+    local boards = boards_env.items
+    assert(type(boards) == "table",
+        "[pricing.vendor_anchor] boards.items required")
 
-    local vendor_items, vendor_meta =
-        PricingModel.envelope_items(env.vendor, "vendor", "vendor")
+    local vendor_env = env.vendor
+    assert(type(vendor_env) == "table",
+        "[pricing.vendor_anchor] vendor envelope required")
+    assert(vendor_env.kind == "vendor",
+        "[pricing.vendor_anchor] vendor.kind must be 'vendor'")
+
+    local vendor_items = vendor_env.items
+    assert(type(vendor_items) == "table",
+        "[pricing.vendor_anchor] vendor.items required")
+
+    local vendor_meta = vendor_env.meta
+    if vendor_meta ~= nil then
+        assert(type(vendor_meta) == "table",
+            "[pricing.vendor_anchor] vendor.meta must be table|nil")
+    else
+        vendor_meta = {}
+    end
 
     local BoardEquivalence =
         require("core.model.board_equivalence.matcher")
@@ -47,14 +66,10 @@ function VendorAnchor.run(env)
 
     local per_board = {}
 
-    for i, b in ipairs(boards) do
-
-        ------------------------------------------------
-        -- Match vendor board
-        ------------------------------------------------
+    for i, board in ipairs(boards) do
 
         local matched, signal =
-            BoardEquivalence.match(b, vendor_items)
+            BoardEquivalence.match(board, vendor_items)
 
         local retail
 
@@ -68,7 +83,7 @@ function VendorAnchor.run(env)
         local suggested = retail * (1 - discount_pct / 100)
 
         per_board[i] = {
-            label = b.label,
+            label = board.label,
 
             market = {
                 source          = vendor_meta.name,
@@ -84,10 +99,9 @@ function VendorAnchor.run(env)
     end
 
     return {
-        basis      = "vendor_anchor",
-        profile_id = profile.profile_id,
-        per_board  = per_board,
-        opts       = opts,
+        basis     = "vendor_anchor",
+        per_board = per_board,
+        opts      = opts,
     }
 end
 

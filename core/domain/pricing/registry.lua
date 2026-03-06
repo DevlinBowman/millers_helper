@@ -24,14 +24,12 @@ Registry.input =
 ----------------------------------------------------------------
 
 Registry.strategies = {
-    cost_model =
-        require("core.domain.pricing.strategies.cost_model"),
 
     vendor_anchor =
         require("core.domain.pricing.strategies.vendor_anchor"),
 
-    hybrid_market =
-        require("core.domain.pricing.strategies.hybrid_market"),
+    reverse_order_value =
+        require("core.domain.pricing.strategies.reverse_order_value"),
 }
 
 ----------------------------------------------------------------

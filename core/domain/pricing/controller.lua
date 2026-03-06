@@ -15,6 +15,7 @@ local Controller = {}
 ----------------------------------------------------------------
 
 function Controller.run_raw(source, basis, opts)
+
     Trace.contract_enter("core.domain.pricing.controller.run_raw")
 
     opts = opts or {}
@@ -22,14 +23,12 @@ function Controller.run_raw(source, basis, opts)
     local boards = Registry.input.extract_boards(source)
 
     local strategy = Registry.strategies[basis]
-    assert(strategy, "[pricing.domain] unknown pricing basis: " .. tostring(basis))
-
-    local profile_id = opts.profile or "default"
-    local profile = PricingModel.profile_build(profile_id)
+    assert(strategy,
+        "[pricing.domain] unknown pricing basis: " .. tostring(basis))
 
     local env = {
-        basis   = basis,
-        profile = profile,
+        source = source,
+        basis  = basis,
 
         boards = {
             kind  = "boards",
