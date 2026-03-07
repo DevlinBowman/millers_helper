@@ -1,6 +1,6 @@
 -- core/domain/enrichment/mutate.lua
 
-local Formula = require("core.formula.board.class")
+local Formula = require("core.formula")
 
 local Mutator = {}
 
@@ -24,7 +24,7 @@ local function apply_board_patch(board, fields)
 
     if fields.bf_price ~= nil then
 
-        local f = Formula.new(board)
+        local f = Formula.board(board)
 
         -- normalize base price
         board.bf_price = round2(board.bf_price)
