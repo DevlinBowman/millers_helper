@@ -33,17 +33,16 @@ app:data():submit("job", {
 --
 local tar = app:data():resources():get_one("user", "job", "path")
 -- print(tar)
-I.print(Runtime.load(tar):batches())
+-- I.print(Runtime.load(tar):batches())
 
 -- app:services():vendor():run()
--- local res = app:services():quote():run():print()
--- local res = app:services():invoice():run():print()
--- app:services():compare():run():print()
+app:services():quote():run():print()
+-- app:services():invoice():run():print()
+app:services():compare():run():print()
 -- local committed = app:services():ledger():commit({ force = false })
 -- I.print(committed:transactions(), { shape_only = true })
 --
 -- local all = app:services():ledger():read_all()
--- I.print(all:transactions(), { shape_only = true })
 --
 -- I.print(app:services():ledger():read_all():transactions())
 --
