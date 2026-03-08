@@ -71,6 +71,43 @@ function Object.run(object)
     }
 
     ----------------------------------------------------------------
+    -- Phase 0: Detect explicit dimension pairs
+    --
+    -- If canonical dimension fields already exist in the object,
+    -- we protect those slots from alias overwrite.
+    --
+    -- Protection is applied independently for height and width.
+    --
+    -- Example protected cases:
+    --
+    --   base_h + h
+    --   base_w + w
+    --   base_h + h + base_w
+    --   base_h + h + base_w + w
+    --
+    -- If both values exist for an axis, we pre-install them so
+    -- alias resolution cannot overwrite them.
+    ----------------------------------------------------------------
+
+    local protect_height =
+        object.base_h ~= nil and
+        object.h      ~= nil
+
+    local protect_width =
+        object.base_w ~= nil and
+        object.w      ~= nil
+
+    if protect_height then
+        out.board.base_h = object.base_h
+        out.board.h      = object.h
+    end
+
+    if protect_width then
+        out.board.base_w = object.base_w
+        out.board.w      = object.w
+    end
+
+    ----------------------------------------------------------------
     -- Phase 1: Field-by-field classification
     --
     -- For each raw key:
@@ -79,7 +116,8 @@ function Object.run(object)
     --   3. Assign into board/order partition
     --   4. Track overwrite diagnostics if canonical repeats
     --
-    -- No semantic validation occurs here.
+    -- Dimension slots already protected in Phase 0 will not
+    -- be overwritten by alias mappings.
     ----------------------------------------------------------------
 
     for raw_key, value in pairs(object) do
@@ -104,6 +142,28 @@ function Object.run(object)
             -- BOARD DOMAIN
             --------------------------------------------------------
             if owner == spec.DOMAIN.BOARD then
+
+                ----------------------------------------------------
+                -- Skip overwrite if this dimension slot was
+                -- explicitly protected earlier.
+                ----------------------------------------------------
+
+                if protect_height then
+                    if canonical == "base_h" or canonical == "h" then
+                        if out.board[canonical] ~= nil then
+                            goto continue
+                        end
+                    end
+                end
+
+                if protect_width then
+                    if canonical == "base_w" or canonical == "w" then
+                        if out.board[canonical] ~= nil then
+                            goto continue
+                        end
+                    end
+                end
+
                 part.set_field(
                     out.board,
                     canonical,
@@ -134,6 +194,8 @@ function Object.run(object)
                 out.unknown[raw_key] = value
             end
         end
+
+        ::continue::
     end
 
     ----------------------------------------------------------------
