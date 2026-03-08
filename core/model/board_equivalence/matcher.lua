@@ -73,6 +73,9 @@ end
 -- Match signal
 ----------------------------------------------------------------
 
+-- core/model/board_equivalence/matcher.lua
+-- function: signal
+
 local function signal(a, b)
     if not a or not b then
         return "?"
@@ -80,17 +83,41 @@ local function signal(a, b)
 
     local sig = {}
 
-    if a.h == b.h then sig[#sig + 1] = "H" end
-    if a.w == b.w then sig[#sig + 1] = "W" end
-    if a.l == b.l then sig[#sig + 1] = "L" end
+    ------------------------------------------------------------
+    -- Dimension matches (only if both values exist)
+    ------------------------------------------------------------
 
-    if (a.tag or "") == (b.tag or "") then
+    if a.h and b.h and a.h == b.h then
+        sig[#sig + 1] = "H"
+    end
+
+    if a.w and b.w and a.w == b.w then
+        sig[#sig + 1] = "W"
+    end
+
+    if a.l and b.l and a.l == b.l then
+        sig[#sig + 1] = "L"
+    end
+
+    ------------------------------------------------------------
+    -- Tag match (only if both tags exist)
+    ------------------------------------------------------------
+
+    if a.tag and b.tag and a.tag == b.tag then
         sig[#sig + 1] = "T"
     end
 
-    if (a.grade or "") == (b.grade or "") then
+    ------------------------------------------------------------
+    -- Grade match (only if both grades exist)
+    ------------------------------------------------------------
+
+    if a.grade and b.grade and a.grade == b.grade then
         sig[#sig + 1] = "G"
     end
+
+    ------------------------------------------------------------
+    -- Grade delta always appended
+    ------------------------------------------------------------
 
     sig[#sig + 1] = grade_delta(a, b)
 
@@ -151,32 +178,77 @@ end
 -- Public
 ----------------------------------------------------------------
 
+-- core/model/board_equivalence/matcher.lua
+-- function: BoardEquivalence.match
+
 function BoardEquivalence.match(order_board, candidates)
+
+    if not order_board then
+        return nil, "none"
+    end
+
+    local best
+    local best_tier
+    local best_distance
+
     for _, b in ipairs(candidates or {}) do
+
+        local tier
+
+        ------------------------------------------------------------
+        -- Determine tier
+        ------------------------------------------------------------
+
         if exact(order_board, b) then
-            return b, signal(order_board, b)
+            tier = 1
+
+        elseif dim_grade(order_board, b) then
+            tier = 2
+
+        elseif family(order_board, b) then
+            tier = 3
+
+        else
+            tier = 4
+        end
+
+        ------------------------------------------------------------
+        -- Compute distance (for tie-breaking)
+        ------------------------------------------------------------
+
+        local distance =
+            math.abs((order_board.h or 0) - (b.h or 0)) +
+            math.abs((order_board.w or 0) - (b.w or 0))
+
+        ------------------------------------------------------------
+        -- Select best candidate
+        ------------------------------------------------------------
+
+        if not best then
+            best = b
+            best_tier = tier
+            best_distance = distance
+
+        elseif tier < best_tier then
+            best = b
+            best_tier = tier
+            best_distance = distance
+
+        elseif tier == best_tier and distance < best_distance then
+            best = b
+            best_distance = distance
         end
     end
 
-    for _, b in ipairs(candidates or {}) do
-        if dim_grade(order_board, b) then
-            return b, signal(order_board, b)
-        end
+    ------------------------------------------------------------
+    -- No candidates
+    ------------------------------------------------------------
+
+    if not best then
+        return nil, "none"
     end
 
-    for _, b in ipairs(candidates or {}) do
-        if family(order_board, b) then
-            return b, signal(order_board, b)
-        end
-    end
-
-    local n = nearest(order_board, candidates)
-
-    if n then
-        return n, signal(order_board, n)
-    end
-
-    return nil, "none"
+    return best, signal(order_board, best)
 end
 
 return BoardEquivalence
