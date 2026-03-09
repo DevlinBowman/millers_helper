@@ -25,58 +25,58 @@ Grade.VALUE = {
         type = "symbol",
         zone = "common",
         grain = "construction",
-        rank = 3,
+        rank = 3.1,
         multiplier = 1.00,
         description = "Construction Common.",
-        aliases = { "cc", "construction_common" },
+        aliases = { "cc", "construction_common", 'con common' },
     },
 
     ----------------------------------------------------------------
-    -- A Common (CA)
+    -- A Common (AC)
     ----------------------------------------------------------------
-    CA = {
+    AC = {
         kind = "value",
         domain = "board.grade",
-        name = "CA",
+        name = "AC",
         type = "symbol",
         zone = "common",
         grain = "a",
         rank = 6,
         multiplier = 2.70,
         description = "A Common.",
-        aliases = { "ca", "a_common" },
+        aliases = { "ca", "a_common", 'common a' },
     },
 
     ----------------------------------------------------------------
-    -- Construction Heart (HC)
+    -- Construction Heart (CH)
     ----------------------------------------------------------------
-    HC = {
+    CH = {
         kind = "value",
         domain = "board.grade",
-        name = "HC",
+        name = "CH",
         type = "symbol",
         zone = "heart",
         grain = "construction",
         rank = 4,
         multiplier = 1.30,
         description = "Construction Heart.",
-        aliases = { "hc", "construction_heart" },
+        aliases = { "hc", "construction_heart", 'con heart' },
     },
 
     ----------------------------------------------------------------
-    -- A Heart (HA)
+    -- A Heart (AH)
     ----------------------------------------------------------------
-    HA = {
+    AH = {
         kind = "value",
         domain = "board.grade",
-        name = "HA",
+        name = "AH",
         type = "symbol",
         zone = "heart",
         grain = "a",
         rank = 7,
         multiplier = 3.51,
         description = "A Heart.",
-        aliases = { "ha", "clear_heart", "a_heart" },
+        aliases = { "ha", "clear_heart", 'clear heart', "a_heart", 'heart a' },
     },
 
     ----------------------------------------------------------------
@@ -92,7 +92,7 @@ Grade.VALUE = {
         rank = 2,
         multiplier = 0.75,
         description = "Merchantable Common.",
-        aliases = { "mc", "merchantable_common" },
+        aliases = { "mc", "merchantable_common", 'merch common', 'common merch' },
     },
 
     ----------------------------------------------------------------
@@ -108,7 +108,7 @@ Grade.VALUE = {
         rank = 3,
         multiplier = 0.98,
         description = "Merchantable Heart.",
-        aliases = { "mh", "merchantable_heart" },
+        aliases = { "mh", "merchantable_heart", 'merch heart' },
     },
 
     ----------------------------------------------------------------
@@ -124,7 +124,7 @@ Grade.VALUE = {
         rank = 5,
         multiplier = 1.20,
         description = "Select Common.",
-        aliases = { "sc", "select_common" },
+        aliases = { "sc", "select_common", 'common select' },
     },
 
     ----------------------------------------------------------------
@@ -140,7 +140,7 @@ Grade.VALUE = {
         rank = 6,
         multiplier = 1.56,
         description = "Select Heart.",
-        aliases = { "sh", "select_heart" },
+        aliases = { "sh", "select_heart", 'heart select' },
     },
 
     ----------------------------------------------------------------
@@ -156,7 +156,7 @@ Grade.VALUE = {
         rank = 6,
         multiplier = 1.55,
         description = "B Common.",
-        aliases = { "bc", "b_common" },
+        aliases = { "bc", "b_common", 'common b' },
     },
 
     ----------------------------------------------------------------
@@ -172,7 +172,7 @@ Grade.VALUE = {
         rank = 7,
         multiplier = 2.015,
         description = "B Heart.",
-        aliases = { "bh", "b_heart" },
+        aliases = { "bh", "b_heart", 'heart b' },
     },
 
 }

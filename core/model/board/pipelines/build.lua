@@ -5,12 +5,13 @@
 -- and emits Signals for data errors (bad/missing input).
 
 local Registry = require("core.model.board.registry")
+local Schema   = require("core.schema")
 local Signals  = require("core.signal")
 
-local Build = {}
+local Build    = {}
 
-local Board = {}
-Board.__index = Board
+local Board    = {}
+Board.__index  = Board
 
 ----------------------------------------------------------------
 -- Hard assertions (programmer errors)
@@ -214,7 +215,7 @@ function Build.run(spec)
     -- Initialize schema surface
     ------------------------------------------------------------
 
-    local board = init_schema_surface()
+    local board  = init_schema_surface()
 
     -- Seed required canonical fields
     board.base_h = base_h
@@ -258,6 +259,28 @@ function Build.run(spec)
 
     board = coerce_result.value
     local unknown = coerce_result.unknown
+
+    ------------------------------------------------------------
+    -- Schema canonicalization
+    ------------------------------------------------------------
+
+    local ok_canonical = safe_stage(
+        "canonicalize",
+        function()
+            Schema.object.canonicalize("board", board)
+            return true
+        end,
+        signals,
+        { board = board }
+    )
+
+    if not ok_canonical then
+        return {
+            board   = nil,
+            unknown = unknown,
+            signals = signals,
+        }
+    end
 
     ------------------------------------------------------------
     -- Validate

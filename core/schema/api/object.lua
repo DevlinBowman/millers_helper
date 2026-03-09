@@ -80,6 +80,25 @@ function Object.exists(domain, obj)
 end
 
 ------------------------------------------------
+-- canonicalization
+------------------------------------------------
+
+---Normalize symbol fields to canonical schema values.
+---
+---Resolves aliases defined in schema value domains.
+---
+---Example:
+---  Object.canonicalize("board", obj)
+---
+---@param domain SchemaFieldDomain
+---@param obj table
+---@return table
+function Object.canonicalize(domain, obj)
+    return Engine.canonicalize(domain, obj)
+end
+
+
+------------------------------------------------
 -- semantic validation
 ------------------------------------------------
 

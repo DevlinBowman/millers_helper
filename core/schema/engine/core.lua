@@ -10,6 +10,7 @@ local Validate       = require("core.schema.engine.runtime.validation")
 local Resolver       = require("core.schema.engine.runtime.resolver")
 local Catalog        = require("core.schema.engine.runtime.catalog")
 local Audit          = require("core.schema.engine.runtime.audit")
+local Canonicalize   = require("core.schema.engine.runtime.canonicalize")
 
 local ReferenceIndex = require("core.schema.engine.runtime.reference_index")
 
@@ -76,6 +77,14 @@ function Core.new()
     self.value           = Resolver.value
     self.domain_fields   = Resolver.domain_fields
     self.reference       = Resolver.reference
+
+    ------------------------------------------------
+    -- canonicalization
+    ------------------------------------------------
+
+    function self.canonicalize(domain, obj)
+        return Canonicalize.object(domain, obj)
+    end
 
     ------------------------------------------------
     -- value domain helpers
