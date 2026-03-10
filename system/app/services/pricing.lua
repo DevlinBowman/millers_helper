@@ -82,35 +82,6 @@ function Pricing:_resolve_vendor_env(selector, vendor_selector)
     }
 end
 
----@param batch table
----@param pricing_result table
----@return table|nil
-function Pricing:_build_patch(batch, pricing_result)
-    local model = pricing_result:model():raw()
-    local per_board = model.per_board or {}
-
-    local patch = {
-        service = "pricing",
-        changes = {
-            boards = {}
-        }
-    }
-
-    for index, row in ipairs(per_board) do
-        if row and row.recommended_price_per_bf ~= nil then
-            patch.changes.boards[index] = {
-                bf_price = row.recommended_price_per_bf
-            }
-        end
-    end
-
-    if next(patch.changes.boards) == nil then
-        return nil
-    end
-
-    return patch
-end
-
 ------------------------------------------------------------
 -- Resolve Only (no mutation)
 ------------------------------------------------------------
@@ -137,10 +108,10 @@ function Pricing:resolve(selector, opts)
     end
 
     local domain_opts = {
-        allocations = opts.allocations,
-        compare     = opts.compare,
-        percentage  = opts.percentage,
-        profile     = opts.profile,
+        allocations        = opts.allocations,
+        compare            = opts.compare,
+        percentage         = opts.percentage,
+        profile            = opts.profile,
         target_total_value = opts.target_total_value,
     }
 
@@ -159,13 +130,11 @@ function Pricing:resolve(selector, opts)
     end
 
     local result = PricingDomain.run(batch, basis, domain_opts)
-    local patch = self:_build_patch(batch, result)
 
     return {
         ok = true,
         strategy = basis,
         result = result,
-        patch = patch,
         provided = { "board_prices" }
     }
 end
@@ -182,11 +151,6 @@ function Pricing:run(selector, opts)
 
     if not resolved.ok then
         return resolved
-    end
-
-    if resolved.patch then
-        local batch = self:_load_user_batch(selector)
-        Mutator.apply(batch, { resolved.patch })
     end
 
     return resolved

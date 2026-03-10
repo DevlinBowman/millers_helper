@@ -31,6 +31,8 @@ app:data():submit("job", {
 })
 -- app:data():slots():set_selection("user", "job", 12)
 --
+--
+I.print(app:data():intent():inspect())
 -- app:services():vendor():run()
 
 ------------------------------------------------------------
@@ -47,19 +49,21 @@ local batch = job_batches[1]
 local vendor_batches = app:data():runtime():batches("system", "vendor")
 local vendor = vendor_batches[1]
 -- I.print(vendor_batches[2])
+--
+
 
 ------------------------------------------------------------
 -- Intent configuration
 ------------------------------------------------------------
 
 app:data():intent():set("pricing", {
-    basis = "reverse_order_value",
-    vendor = {}
-    --     kind  = "vendor",
-    --     items = vendor.boards,
-    --     meta  = { name = vendor.id }
-    -- },
-    -- percentage = 10
+    basis = "vendor_anchor",
+    vendor = {
+        kind  = "vendor",
+        items = vendor.boards,
+        meta  = { name = vendor.id }
+    },
+    percentage = 10
 })
 I.print(app:data():intent():inspect())
 
@@ -77,20 +81,6 @@ local Runner = require("system.app.services.enrichment_runner")
 
 
 ------------------------------------------------------------
--- Optional: inspect runtime after enrichment
-------------------------------------------------------------
-
--- for i, board in ipairs(batch.boards) do
---     print(
---         i,
---         board.label,
---         "bf:", board.bf_price,
---         "ea:", board.ea_price,
---         "lf:", board.lf_price
---     )
--- end
-
-------------------------------------------------------------
 -- Additional vendor (optional)
 ------------------------------------------------------------
 
@@ -104,7 +94,7 @@ local Runner = require("system.app.services.enrichment_runner")
 ------------------------------------------------------------
 
 -- app:services():vendor():run()
--- app:services():quote():run():print()
+app:services():quote():run():print()
 -- app:services():invoice():run():print()
 
 ------------------------------------------------------------
@@ -120,4 +110,9 @@ else
     require("inspector").print(result)
 end
 
-I.print(batch)
+
+app:services():quote():run():print()
+
+-- app:data():intent():save('pricing')
+app:data():intent():load('pricing')
+I.print(app:data():intent():inspect())

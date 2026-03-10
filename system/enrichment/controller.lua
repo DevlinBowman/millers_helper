@@ -3,8 +3,10 @@
 -- System orchestration layer responsible for resolving
 -- missing capabilities required by services.
 
-local Mutator = require("system.runtime.mutator")
+local Mutator          = require("system.runtime.mutator")
 local BuiltinProviders = require("system.enrichment.providers")
+local Materializer     = require("system.capability.materializer")
+local PatchValidator   = require("system.capability.patch_validator")
 
 local Enrichment = {}
 
@@ -48,11 +50,14 @@ function Enrichment.resolve(app, selector, request)
 
     local missing = request.missing or {}
     local env = request.env
+    local target = request.target
 
     assert(type(env) == "table", "[enrichment] request.env required")
+    assert(type(target) == "table", "[enrichment] request.target required")
 
     local patches = {}
     local unresolved = {}
+    local results = {}
 
     for _, capability in ipairs(missing) do
         local provider = providers[capability]
@@ -63,33 +68,39 @@ function Enrichment.resolve(app, selector, request)
                 reason = "no_provider"
             }
         else
-            local result = provider(app, selector, env)
+            local provider_result = provider(app, selector, env)
 
-            if result and result.patch then
-                patches[#patches + 1] = result.patch
-            elseif result and result.ok then
-                -- capability satisfied without mutation
-            else
+            if not provider_result or provider_result.ok ~= true then
                 unresolved[#unresolved + 1] = {
                     capability = capability,
                     reason = "provider_failed"
                 }
+            else
+                results[capability] = provider_result
+
+                local patch = Materializer.materialize(
+                    capability,
+                    target,
+                    provider_result
+                )
+
+                if patch then
+                    PatchValidator.validate_patch(patch)
+                    patches[#patches + 1] = patch
+                end
             end
         end
     end
 
-    --------------------------------------------------------
-    -- apply patches
-    --------------------------------------------------------
-
     if #patches > 0 then
-        Mutator.apply(env.source or env.job or env, patches)
+        Mutator.apply(target, patches)
     end
 
     return {
         ok = (#unresolved == 0),
         unresolved = unresolved,
-        patches = patches
+        patches = patches,
+        results = results,
     }
 end
 

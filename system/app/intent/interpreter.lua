@@ -30,13 +30,20 @@ end
 -- pricing context builder
 ------------------------------------------------------------
 
-function Interpreter.pricing(runtime, intent)
+function Interpreter.pricing(runtime, intent, opts)
 
-    local user = intent.pricing or {}
+    local ctx = {}
 
-    local ctx = merge_defaults(PricingDef, user)
+    for k,v in pairs(intent.pricing or {}) do
+        ctx[k] = v
+    end
 
-    local ok, err = PricingDef.validate(runtime, ctx)
+    for k,v in pairs(opts or {}) do
+        ctx[k] = v
+    end
+
+    local ok, err =
+        PricingDef.validate(runtime, ctx)
 
     if ok ~= true then
         return nil, err

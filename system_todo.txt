@@ -1,0 +1,294 @@
+
+SYSTEM REFACTOR TODO LIST
+
+GLOBAL GOALS
+    • Mutation must remain pure and mechanical.
+    • Services must not construct runtime patches.
+    • Patch construction must be centralized.
+    • Capability resolution and runtime mutation must follow the same canonical system.
+    • Intent must be the source of default behavior and policy configuration.
+    • Executor remains the primary orchestrator.
+
+------
+
+RUNTIME MUTATION LAYER (system/runtime/mutator.lua)
+
+Goals
+    • Mutator must only apply changes to runtime objects.
+    • Mutator must not derive fields or perform domain logic.
+
+Tasks
+    • Remove Formula usage from mutator.
+    • Remove price derivation logic (ea_price, lf_price, batch_price).
+    • Remove rounding logic.
+    • Ensure mutator only assigns fields from patches to runtime objects.
+    • Ensure mutator supports patch lists.
+    • Ensure mutator does not validate patch meaning.
+    • Confirm mutator does not access schema or domain logic.
+
+Result
+    • Mutator becomes a pure state writer.
+
+------
+
+PATCH SYSTEM (NEW CANONICAL LAYER)
+
+Goals
+    • Centralize patch construction.
+    • Ensure every runtime mutation follows the same structure.
+
+Create new directory
+system/capability/
+
+Files to create
+system/capability/registry.lua
+system/capability/materializer.lua
+system/capability/patch_validator.lua
+system/capability/materializers/pricing.lua
+
+Tasks
+    • Define canonical patch schema.
+    • Implement patch validator.
+    • Implement capability registry mapping capability → materializer.
+    • Implement materializer controller.
+    • Implement pricing materializer that expands bf_price into ea_price, lf_price, batch_price.
+    • Ensure materializers produce fully expanded patches.
+    • Ensure validator checks patch structure before mutator runs.
+
+Result
+    • All runtime patches originate from capability materializers.
+
+------
+
+SERVICE LAYER (system/app/services)
+
+Goals
+    • Services orchestrate domain logic only.
+    • Services must not create runtime patches.
+
+Tasks
+    • Remove all patch construction from services.
+    • Remove _build_patch functions.
+    • Ensure services return domain results.
+    • Ensure services declare provided capabilities.
+    • Ensure services only perform:
+load runtime
+build env
+call domain
+return result
+
+Result
+    • Services become pure domain orchestration.
+
+------
+
+ENRICHMENT LAYER (system/enrichment)
+
+Goals
+    • Enrichment resolves missing capabilities.
+    • Enrichment invokes services and applies resulting patches.
+
+Tasks
+    • Modify providers so they return domain results instead of patches.
+    • Move patch creation into capability materializer system.
+    • After service result is returned:
+call materializer
+validate patch
+apply patch via mutator
+    • Ensure enrichment receives runtime batch explicitly instead of guessing env.source/env.job.
+    • Remove patch construction logic from providers.
+
+Result
+    • Enrichment becomes the bridge between capability resolution and runtime mutation.
+
+------
+
+COMPATIBILITY LAYER (system/compatibility)
+
+Goals
+    • Compatibility defines required capabilities.
+    • Compatibility must remain independent of patch logic.
+
+Tasks
+    • Ensure contracts only describe required capabilities.
+    • Ensure validator only checks env capability presence.
+    • Confirm compatibility does not reference runtime mutation.
+
+Result
+    • Compatibility remains unchanged.
+
+------
+
+EXECUTION CONTROLLER (system/execution/controller.lua)
+
+Goals
+    • Executor orchestrates the system pipeline.
+
+Tasks
+    • Ensure executor performs the following steps in order:
+load service
+build environment
+run compatibility check
+call enrichment if missing capabilities
+rebuild environment
+run compatibility check again
+execute service
+    • Ensure executor never creates patches.
+    • Ensure executor never mutates runtime.
+    • Ensure executor never reads patch schema.
+
+Result
+    • Executor remains the central system coordinator.
+
+------
+
+INTENT SYSTEM (system/app/state/intent.lua)
+
+Goals
+    • Intent defines system policy and default configuration.
+
+Tasks
+    • Ensure all service options are sourced from intent when applicable.
+    • Ensure interpreter resolves intent fields into service options.
+    • Ensure execution opts override intent values.
+    • Ensure intent defaults are loaded during system startup.
+    • Ensure intent state is accessible to enrichment providers.
+
+Result
+    • Intent becomes the policy layer of the system.
+
+------
+
+INTENT PRESETS (FILESTORE)
+
+Goals
+    • Allow system behavior defaults to be configured from filesystem.
+
+Create directory
+data/app//system/presets/intent/
+
+Example files
+pricing.json
+compare.json
+allocation.json
+
+Tasks
+    • Implement intent preset loader at backend startup.
+    • Load preset files and merge into intent state.
+    • Ensure preset values can be overridden by runtime intent.
+    • Ensure interpreter uses merged intent values.
+
+Result
+    • Default system behavior becomes configurable.
+
+------
+
+INTENT INTERPRETER (system/app/intent/interpreter.lua)
+
+Goals
+    • Convert intent values into service-ready options.
+
+Tasks
+    • Ensure interpreter merges:
+intent values
+defaults
+runtime opts
+    • Ensure interpreter validates required fields.
+    • Ensure interpreter returns clean service options.
+    • Ensure interpreter is used by enrichment providers.
+
+Result
+    • Services receive fully resolved options.
+
+------
+
+ENRICHMENT PROVIDERS (system/enrichment/providers.lua)
+
+Goals
+    • Providers determine how to resolve capabilities.
+
+Tasks
+    • Modify providers so they:
+read intent state
+build service options using interpreter
+call service resolve
+return domain result
+    • Remove patch construction from providers.
+    • Ensure providers remain capability-specific.
+
+Result
+    • Providers act as capability execution adapters.
+
+------
+
+CAPABILITY REGISTRY
+
+Goals
+    • Define which capabilities map to which materializers.
+
+Tasks
+    • Implement registry mapping capability → materializer module.
+    • Ensure enrichment uses registry to build patches.
+    • Ensure registry can be extended for new capabilities.
+
+Result
+    • Capability resolution becomes extensible.
+
+------
+
+STARTUP BOOTSTRAP (system/backend.lua)
+
+Goals
+    • Initialize runtime state and intent defaults.
+
+Tasks
+    • After resources.pull_system():
+load intent presets from filesystem
+populate intent state
+    • Ensure interpreter defaults are available before execution.
+
+Result
+    • System starts with predictable policy configuration.
+
+------
+
+FINAL ARCHITECTURE AFTER REFACTOR
+
+domain
+    • pure computation
+
+services
+    • domain orchestration
+
+compatibility
+    • capability requirements
+
+intent
+    • policy configuration
+
+enrichment
+    • capability resolution
+
+capability materializers
+    • capability → runtime patch
+
+mutator
+    • patch application
+
+executor
+    • system pipeline orchestration
+
+------
+
+END GOAL
+
+Runtime mutation becomes deterministic.
+
+Every mutation originates from:
+capability → materializer → patch → mutator.
+
+Intent controls system behavior.
+
+Services remain pure domain orchestrators.
+
+Executor remains the primary system coordinator.

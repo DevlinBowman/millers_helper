@@ -127,6 +127,7 @@ function Compare:_resolve_missing(selector, env, opts, compat)
         missing  = compat.missing or {},
         env      = env,
         opts     = opts or {},
+        target   = env.job,
     })
 end
 

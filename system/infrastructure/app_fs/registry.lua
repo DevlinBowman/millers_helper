@@ -26,11 +26,16 @@ Registry.locations = {
     ------------------------------------------------------------
     -- SYSTEM (owned by system/app boundary)
     ------------------------------------------------------------
-    system            = "system",
-    system_staged     = "system/staged",
-    system_sessions   = "system/sessions",
-    system_runtime_ids= "system/runtime_ids",
-    system_presets    = "system/presets",
+    system             = "system",
+    system_staged      = "system/staged",
+    system_sessions    = "system/sessions",
+    system_runtime_ids = "system/runtime_ids",
+    system_presets     = "system/presets",
+
+    ------------------------------------------------------------
+    -- SYSTEM PRESET DOMAINS
+    ------------------------------------------------------------
+    intent_presets = "system/presets/intent",
 
     ------------------------------------------------------------
     -- SYSTEM FILES
@@ -54,6 +59,11 @@ Registry.ensure_dirs = {
     "system/sessions",
     "system/runtime_ids",
     "system/presets",
+
+    ------------------------------------------------------------
+    -- SYSTEM PRESET DOMAINS
+    ------------------------------------------------------------
+    "system/presets/intent",
 }
 
 return Registry

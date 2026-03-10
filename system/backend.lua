@@ -31,9 +31,10 @@ function Backend.run(instance_name)
     initialize_instance(instance_name)
 
     local surface = Surface.new(instance_name)
-
-    -- register system file pointers only
+    -- Register system resource descriptors
     surface:data():resources():pull_system()
+    -- Load intent presets
+    surface:data():intent():pull_all()
 
     return surface
 end

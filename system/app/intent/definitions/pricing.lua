@@ -2,32 +2,6 @@
 
 local PricingIntent = {}
 
-PricingIntent.fields = {
-
-    basis = {
-        values = {
-            "vendor_anchor",
-            "reverse_order_value"
-        },
-        default = "vendor_anchor"
-    },
-
-    vendor = {
-        type = "string",
-        optional = true
-    },
-
-    percentage = {
-        type = "number",
-        default = 10
-    },
-
-    profile = {
-        type = "string",
-        default = "default"
-    }
-}
-
 ------------------------------------------------------------
 -- validation
 ------------------------------------------------------------
