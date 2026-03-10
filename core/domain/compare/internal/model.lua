@@ -54,25 +54,28 @@ end
 ----------------------------------------------------------------
 
 function Model.build(input)
-
     ------------------------------------------------------------
     -- Helpers
     ------------------------------------------------------------
 
     local function resolve_bf_price(board)
-        if type(board.bf_price) == "number" then
+        if type(board.bf_price) == "number" and board.bf_price > 0 then
             return board.bf_price
         end
 
         if type(board.ea_price) == "number"
-        and type(board.bf_ea) == "number"
-        and board.bf_ea > 0 then
+            and board.ea_price > 0
+            and type(board.bf_ea) == "number"
+            and board.bf_ea > 0
+        then
             return board.ea_price / board.bf_ea
         end
 
         if type(board.batch_price) == "number"
-        and type(board.bf_batch) == "number"
-        and board.bf_batch > 0 then
+            and board.batch_price > 0
+            and type(board.bf_batch) == "number"
+            and board.bf_batch > 0
+        then
             return board.batch_price / board.bf_batch
         end
 
@@ -97,7 +100,6 @@ function Model.build(input)
     ------------------------------------------------------------
 
     for _, order_board in ipairs((input.order and input.order.boards) or {}) do
-
         local metrics = order_metrics(order_board)
 
         local row = {
@@ -133,7 +135,6 @@ function Model.build(input)
         ------------------------------------------------------------
 
         for _, src in ipairs(input.sources or {}) do
-
             local matched, sig =
                 BoardMatcher.match(order_board, src.boards or {})
 

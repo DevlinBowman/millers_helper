@@ -12,6 +12,7 @@ local Resources = require("system.app.state.resources")
 local RuntimeNS = require("system.app.state.runtime")
 local Session   = require("system.app.state.session")
 local Slots     = require("system.app.state.slots")
+local Intent = require("system.app.state.intent")
 
 ---@class AppDataFacade
 ---@field private __app Surface
@@ -33,6 +34,7 @@ local function build_initial_state()
     return {
         vars = {},
         slots = {},
+        intent = {},
         inputs = { by_role = {} },
         resources = {
             user   = {},
@@ -56,6 +58,7 @@ function Data.new(app)
 
         __vars      = nil,
         __slots     = nil,
+        __intent    = nil,
         __input     = nil,
         __resources = nil,
         __runtime   = nil,
@@ -156,6 +159,14 @@ function Data:slots()
     return self.__slots
 end
 
+---@return AppDataIntent
+function Data:intent()
+    if not self.__intent then
+        self.__intent = Intent.new(self.__state)
+    end
+    return self.__intent
+end
+
 ---Submit external input into system and promote to resources.
 ---@param role string
 ---@param payload table
@@ -183,6 +194,7 @@ end
 function Data:inspect()
     return {
         vars      = self.__state.vars,
+        intent    = self.__state.intent,
         inputs    = self.__state.inputs.by_role,
         resources = self.__state.resources,
         runtime   = self.__state.runtime,

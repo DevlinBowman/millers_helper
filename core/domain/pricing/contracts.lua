@@ -1,160 +1,136 @@
 -- core/domain/pricing/contracts.lua
 --
--- Authoritative contract description for the pricing domain service.
---
+-- Pricing service contract authority.
 -- This module defines:
---   • the canonical execution context (env)
---   • strategy capability requirements
---   • minimal structural expectations for referenced objects
---
--- It contains NO logic. It only describes shapes.
+--   • how pricing context is built
+--   • which capabilities exist
+--   • which strategies require which capabilities
+
+local Input       = require("core.domain.pricing.internal.input")
+local TargetValue = require("core.domain.pricing.internal.target_value")
 
 local Contracts = {}
 
 ------------------------------------------------------------
--- SERVICE EXECUTION CONTEXT
+-- Context Builder
 ------------------------------------------------------------
 
-Contracts.context = {
+---@param source any
+---@param basis string
+---@param opts table|nil
+---@return table
+function Contracts.build_env(source, basis, opts)
+    opts = opts or {}
 
-    description = "Pricing execution context passed to strategies",
+    local boards = Input.extract_boards(source)
 
-    fields = {
-
-        basis = {
-            required = true,
-            description = "strategy identifier"
-        },
-
-        source = {
-            required = true,
-            description = "original input object"
-        },
+    return {
+        source = source,
+        basis  = basis,
 
         boards = {
-            required = true,
-            description = "board envelope",
-
-            envelope = {
-                kind = "boards",
-                required = {
-                    "items"
-                }
-            }
+            kind  = "boards",
+            items = boards,
         },
 
-        vendor = {
-            required = false,
+        allocations = opts.allocations,
+        vendor      = opts.vendor,
+        compare     = opts.compare,
 
-            envelope = {
-                kind = "vendor",
-                required = {
-                    "items"
-                }
-            }
-        },
-
-        allocations = {
-            required = false
-        },
-
-        compare = {
-            required = false
-        },
-
-        opts = {
-            required = false
-        }
-
+        opts = opts,
     }
+end
 
+------------------------------------------------------------
+-- Capability Checks
+------------------------------------------------------------
+
+Contracts.capabilities = {}
+
+---@param env table
+---@return boolean
+function Contracts.capabilities.boards(env)
+    return type(env) == "table"
+        and type(env.boards) == "table"
+        and env.boards.kind == "boards"
+        and type(env.boards.items) == "table"
+end
+
+---@param env table
+---@return boolean
+function Contracts.capabilities.vendor(env)
+    return type(env) == "table"
+        and type(env.vendor) == "table"
+        and env.vendor.kind == "vendor"
+        and type(env.vendor.items) == "table"
+end
+
+---@param env table
+---@return boolean
+function Contracts.capabilities.allocations(env)
+    return env ~= nil and env.allocations ~= nil
+end
+
+---@param env table
+---@return boolean
+function Contracts.capabilities.compare(env)
+    return env ~= nil and env.compare ~= nil
+end
+
+---@param env table
+---@return boolean
+function Contracts.capabilities.order_total(env)
+    local value = TargetValue.resolve(env and env.source, env and env.opts)
+    return type(value) == "number"
+end
+
+------------------------------------------------------------
+-- Contract Shape
+------------------------------------------------------------
+
+Contracts.base = {
+    required = {
+        "boards",
+    },
+
+    optional = {
+        "vendor",
+        "allocations",
+        "compare",
+    }
 }
 
-------------------------------------------------------------
--- STRATEGY REQUIREMENTS
-------------------------------------------------------------
-
 Contracts.strategies = {
-
     vendor_anchor = {
+        required = {
+            "vendor",
+        },
 
-        description = "Vendor price anchored pricing",
-
-        requires = {
-            "boards",
-            "vendor"
+        optional = {
+            "allocations",
+            "compare",
         },
 
         opts = {
-            "percentage"
+            "percentage",
+            "profile",
         }
-
     },
 
     reverse_order_value = {
+        required = {
+            "order_total",
+        },
 
-        description = "Distribute order value across boards",
+        optional = {
+            "allocations",
+        },
 
-        requires = {
-            "boards",
-            "order_total"
+        opts = {
+            "target_total_value",
+            "profile",
         }
-
     }
-
 }
-
-------------------------------------------------------------
--- CAPABILITIES
-------------------------------------------------------------
-
-Contracts.capabilities = {
-
-    boards = {
-        description = "boards to be priced"
-    },
-
-    vendor = {
-        description = "vendor reference boards"
-    },
-
-    allocations = {
-        description = "allocation model"
-    },
-
-    compare = {
-        description = "compare analysis results"
-    },
-
-    order_total = {
-        description = "resolved total order value"
-    }
-
-}
-
-------------------------------------------------------------
--- STRUCTURAL TYPES
-------------------------------------------------------------
-
-Contracts.types = {}
-
-Contracts.types.board = {
-    label = "string",
-    ct    = "number?",
-    bf    = "number?",
-    bf_ea = "number?",
-    h     = "number?",
-    w     = "number?",
-    l     = "number?"
-}
-
-Contracts.types.vendor_board = {
-    label = "string",
-    bf_price = "number?",
-    ea_price = "number?",
-    bf_ea = "number?"
-}
-
-------------------------------------------------------------
 
 return Contracts

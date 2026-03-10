@@ -229,7 +229,7 @@ function RuntimeNS:_resolve_context(scope, role, envelope)
     local effective = envelope.__batches[selected] and selected or 1
 
     print(string.format(
-        "[RuntimeNS]ctx %s.%s → slot batch %d (effective %d of %d)",
+        "[RuntimeNS] ctx %s.%s → slot batch %d (effective %d of %d)",
         scope, role, selected, effective, total
     ))
 
