@@ -3,9 +3,6 @@
 local CompareDomain = require("core.domain.compare").controller
 local Contracts     = require("core.domain.compare.contracts")
 
-local Compatibility = require("system.compatibility.controller")
-local Enrichment    = require("system.enrichment.controller")
-
 ---@class AppCompareService
 ---@field private __app Surface
 local Compare = {}
@@ -93,12 +90,15 @@ function Compare:_load_vendor_batches()
 end
 
 ------------------------------------------------------------
--- Internal: Build compare environment
+-- Build compare environment
 ------------------------------------------------------------
 
 ---@param selector integer|string|nil
 ---@param opts table|nil
 ---@return table
+-- system/app/services/compare.lua
+-- function: Compare:_build_env
+
 function Compare:_build_env(selector, opts)
 
     local user_batch =
@@ -108,62 +108,50 @@ function Compare:_build_env(selector, opts)
         self:_load_vendor_batches()
 
     local env =
-        Contracts.build_env(user_batch, vendor_batches, opts or {})
+        Contracts.build_env(
+            user_batch,
+            vendor_batches,
+            opts or {}
+        )
 
     assert(type(env) == "table",
         "[compare.service] contracts.build_env() must return table")
 
-    return env
+    ------------------------------------------------------------
+    -- Return execution envelope
+    ------------------------------------------------------------
+
+    return {
+        strategy = "default",
+        env      = env,
+        target   = user_batch
+    }
 end
 
 ------------------------------------------------------------
--- Internal: Compatibility check
-------------------------------------------------------------
-
----@param env table
----@return table
-function Compare:_check_compatibility(env)
-
-    return Compatibility.check(
-        "compare",
-        "default",
-        env
-    )
-end
-
-------------------------------------------------------------
--- Internal: Resolve missing capabilities
-------------------------------------------------------------
-
----@param selector integer|string|nil
----@param env table
----@param opts table
----@param compat table
----@return table
-function Compare:_resolve_missing(selector, env, opts, compat)
-
-    return Enrichment.resolve(
-        self.__app,
-        selector,
-        {
-            service  = "compare",
-            strategy = "default",
-            missing  = compat.missing or {},
-            env      = env,
-            opts     = opts or {},
-            target   = env.job
-        }
-    )
-end
-
-------------------------------------------------------------
--- Internal: Domain execution
+-- Domain execution
 ------------------------------------------------------------
 
 ---@param env table
 ---@param opts table|nil
 ---@return CompareResult
-function Compare:_run_domain(env, opts)
+function Compare:run_with_env(built, opts)
+
+    opts = opts or {}
+
+    assert(type(built) == "table",
+        "[compare.service] built envelope required")
+
+    local env = built.env or built
+
+    assert(type(env) == "table",
+        "[compare.service] env required")
+
+    assert(type(env.job) == "table",
+        "[compare.service] env.job missing")
+
+    assert(type(env.vendors) == "table",
+        "[compare.service] env.vendors missing")
 
     return CompareDomain.run_strict(
         env.job,
@@ -173,81 +161,18 @@ function Compare:_run_domain(env, opts)
 end
 
 ------------------------------------------------------------
--- Public: Run Compare
+-- Public run (fallback if execution doesn't pass env)
 ------------------------------------------------------------
 
 ---@param selector integer|string|nil
 ---@param opts table|nil
----@return CompareResult|table
+---@return CompareResult
 function Compare:run(selector, opts)
-
-    opts = opts or {}
-
-    --------------------------------------------------------
-    -- 1. Build current compare context
-    --------------------------------------------------------
 
     local env =
         self:_build_env(selector, opts)
 
-    --------------------------------------------------------
-    -- 2. Compatibility check
-    --------------------------------------------------------
-
-    local compatibility_result =
-        self:_check_compatibility(env)
-
-    --------------------------------------------------------
-    -- 3. Resolve missing capabilities via enrichment
-    --------------------------------------------------------
-
-    if not compatibility_result.ok then
-
-        local enrichment_result =
-            self:_resolve_missing(
-                selector,
-                env,
-                opts,
-                compatibility_result
-            )
-
-        if not enrichment_result.ok then
-            return {
-                ok         = false,
-                error      = "compatibility_mismatch",
-                service    = "compare",
-                strategy   = "default",
-                missing    = compatibility_result.missing or {},
-                enrichment = enrichment_result,
-            }
-        end
-
-        ----------------------------------------------------
-        -- 4. Rebuild env after enrichment mutation
-        ----------------------------------------------------
-
-        env =
-            self:_build_env(selector, opts)
-
-        compatibility_result =
-            self:_check_compatibility(env)
-
-        if not compatibility_result.ok then
-            return {
-                ok       = false,
-                error    = "compatibility_mismatch_after_enrichment",
-                service  = "compare",
-                strategy = "default",
-                missing  = compatibility_result.missing or {},
-            }
-        end
-    end
-
-    --------------------------------------------------------
-    -- 5. Run domain compare
-    --------------------------------------------------------
-
-    return self:_run_domain(env, opts)
+    return self:run_with_env(env, opts)
 end
 
 return Compare
