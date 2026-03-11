@@ -76,7 +76,7 @@ function PricingMaterializer.materialize(target, service_result, capability)
     local per_board = raw_model.per_board or {}
 
     local patch = {
-        capability = capability or "board_prices",
+        capability = "board_prices",
         changes = {
             boards = {}
         }
