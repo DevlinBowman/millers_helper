@@ -1,14 +1,18 @@
 -- system/app/services/pricing.lua
 
-local PricingDomain  = require("core.domain.pricing").controller
-local Contracts      = require("core.domain.pricing.contracts")
-local Compatibility  = require("system.compatibility.controller")
-local Mutator        = require("system.runtime.mutator")
+local PricingDomain = require("core.domain.pricing").controller
+local Contracts     = require("core.domain.pricing.contracts")
 
 ---@class AppPricingService
 local Pricing = {}
 Pricing.__index = Pricing
 
+------------------------------------------------------------
+-- Constructor
+------------------------------------------------------------
+
+---@param app Surface
+---@return AppPricingService
 function Pricing.new(app)
     return setmetatable({
         __app = app
@@ -16,144 +20,171 @@ function Pricing.new(app)
 end
 
 ------------------------------------------------------------
--- Internal Helpers
+-- Internal: Load user batch
 ------------------------------------------------------------
 
 ---@param selector integer|string|nil
 ---@return table
 function Pricing:_load_user_batch(selector)
-    local runtime = self.__app:data():runtime()
-    local envelope = runtime:require("user", "job", selector)
+
+    local runtime =
+        self.__app:data():runtime()
+
+    local envelope =
+        runtime:require("user", "job", selector)
+
+    assert(type(envelope) == "table",
+        "[pricing.service] runtime user job envelope missing")
 
     assert(type(envelope.batch) == "function",
         "[pricing.service] runtime job missing batch()")
 
-    return envelope:batch()
-end
+    local batch =
+        envelope:batch()
 
----@param selector integer|string|nil
----@param vendor_selector any
----@return table|nil
-function Pricing:_resolve_vendor_env(selector, vendor_selector)
-    if type(vendor_selector) == "table" and vendor_selector.kind == "vendor" then
-        return vendor_selector
-    end
+    assert(type(batch) == "table",
+        "[pricing.service] runtime job batch missing")
 
-    local runtime = self.__app:data():runtime()
-    local resources = self.__app:data():resources()
+    assert(type(batch.boards) == "table",
+        "[pricing.service] runtime job batch missing boards")
 
-    local vendor_list = resources:get("system", "vendor") or {}
-    if #vendor_list == 0 then
-        return nil
-    end
-
-    local index
-
-    if vendor_selector == nil then
-        index = 1
-    elseif type(vendor_selector) == "number" then
-        index = vendor_selector
-    elseif type(vendor_selector) == "string" then
-        for i, entry in ipairs(vendor_list) do
-            if entry.id == vendor_selector then
-                index = i
-                break
-            end
-        end
-    end
-
-    if not index then
-        return nil
-    end
-
-    local rt = runtime:require("system", "vendor", index)
-    if type(rt.batch) ~= "function" then
-        return nil
-    end
-
-    local batch = rt:batch()
-
-    return {
-        kind  = "vendor",
-        items = batch.boards,
-        meta  = {
-            name = batch.id or vendor_selector or vendor_list[index].id
-        }
-    }
+    return batch
 end
 
 ------------------------------------------------------------
--- Resolve Only (no mutation)
+-- Internal: Load vendor batches
+------------------------------------------------------------
+
+---@return table
+function Pricing:_load_vendor_batches()
+
+    local data    = self.__app:data()
+    local runtime = data:runtime()
+
+    local vendor_descriptors =
+        data:resources():get("system", "vendor") or {}
+
+    local vendor_batches = {}
+
+    for index = 1, #vendor_descriptors do
+
+        local vendor_runtime =
+            runtime:require("system", "vendor", index)
+
+        assert(type(vendor_runtime) == "table",
+            "[pricing.service] runtime vendor envelope missing at index " .. tostring(index))
+
+        assert(type(vendor_runtime.batch) == "function",
+            "[pricing.service] runtime vendor missing batch() at index " .. tostring(index))
+
+        local batch =
+            vendor_runtime:batch()
+
+        assert(type(batch) == "table",
+            "[pricing.service] runtime vendor batch missing at index " .. tostring(index))
+
+        vendor_batches[#vendor_batches + 1] = batch
+    end
+
+    return vendor_batches
+end
+
+------------------------------------------------------------
+-- Build execution environment
 ------------------------------------------------------------
 
 ---@param selector integer|string|nil
 ---@param opts table|nil
 ---@return table
-function Pricing:resolve(selector, opts)
-    opts = opts or {}
+function Pricing:_build_env(selector, opts)
 
-    local batch = self:_load_user_batch(selector)
+    local user_batch =
+        self:_load_user_batch(selector)
 
-    local basis = opts.pricing_basis or opts.basis
-    if not basis then
-        if batch.order
-            and batch.order.use == "sale"
-            and type(batch.order.value) == "number"
-            and batch.order.value > 0
-        then
-            basis = "reverse_order_value"
-        else
-            basis = "vendor_anchor"
+    local vendor_batches =
+        self:_load_vendor_batches()
+
+    local env =
+        Contracts.build_env(
+            user_batch,
+            vendor_batches,
+            opts or {}
+        )
+
+    assert(type(env) == "table",
+        "[pricing.service] contracts.build_env() must return table")
+
+    ------------------------------------------------
+    -- capability exposure
+    ------------------------------------------------
+
+    local has_board_prices = false
+
+    for _, board in ipairs(user_batch.boards or {}) do
+        if type(board.bf_price) == "number" and board.bf_price > 0 then
+            has_board_prices = true
+            break
         end
     end
 
-    local domain_opts = {
-        allocations        = opts.allocations,
-        compare            = opts.compare,
-        percentage         = opts.percentage,
-        profile            = opts.profile,
-        target_total_value = opts.target_total_value,
-    }
-
-    domain_opts.vendor = self:_resolve_vendor_env(selector, opts.vendor)
-
-    local env = Contracts.build_env(batch, basis, domain_opts)
-    local compat = Compatibility.check("pricing", basis, env)
-
-    if not compat.ok then
-        return {
-            ok = false,
-            error = "compatibility_mismatch",
-            missing = compat.missing,
-            strategy = basis,
-        }
+    if has_board_prices then
+        env.board_prices = true
     end
 
-    local result = PricingDomain.run(batch, basis, domain_opts)
+    ------------------------------------------------
+    -- execution envelope
+    ------------------------------------------------
 
     return {
-        ok = true,
-        strategy = basis,
-        result = result,
-        provided = { "board_prices" }
+        strategy = env.pricing_basis or "default",
+        env      = env,
+        target   = user_batch
     }
 end
 
 ------------------------------------------------------------
--- Run + Apply
+-- Domain execution
+------------------------------------------------------------
+
+---@param built table
+---@param opts table|nil
+---@return table
+function Pricing:run_with_env(built, opts)
+
+    opts = opts or {}
+
+    assert(type(built) == "table",
+        "[pricing.service] built envelope required")
+
+    local env =
+        built.env or built
+
+    assert(type(env) == "table",
+        "[pricing.service] env required")
+
+    assert(type(env.job) == "table",
+        "[pricing.service] env.job missing")
+
+    return PricingDomain.run(
+        env.job,
+        env.pricing_basis or "vendor_anchor",
+        env.opts or {}
+    )
+end
+
+------------------------------------------------------------
+-- Public run (fallback)
 ------------------------------------------------------------
 
 ---@param selector integer|string|nil
 ---@param opts table|nil
 ---@return table
 function Pricing:run(selector, opts)
-    local resolved = self:resolve(selector, opts)
 
-    if not resolved.ok then
-        return resolved
-    end
+    local built =
+        self:_build_env(selector, opts)
 
-    return resolved
+    return self:run_with_env(built, opts)
 end
 
 return Pricing

@@ -57,10 +57,15 @@ end
 ---@param capability string
 ---@return table|nil
 function PricingMaterializer.materialize(target, service_result, capability)
-    assert(type(target) == "table", "[pricing.materializer] target required")
-    assert(type(service_result) == "table", "[pricing.materializer] service_result required")
+    assert(type(target) == "table",
+        "[pricing.materializer] target required")
 
-    local domain_result = service_result.result
+    assert(type(service_result) == "table",
+        "[pricing.materializer] service_result required")
+
+    local domain_result =
+        service_result.result
+
     if not domain_result then
         return nil
     end
@@ -68,12 +73,41 @@ function PricingMaterializer.materialize(target, service_result, capability)
     assert(type(domain_result.model) == "function",
         "[pricing.materializer] pricing result missing model()")
 
-    local model = domain_result:model()
+    local model =
+        domain_result:model()
+
     assert(type(model) == "table" and type(model.raw) == "function",
         "[pricing.materializer] pricing result model missing raw()")
 
-    local raw_model = model:raw()
-    local per_board = raw_model.per_board or {}
+    local raw_model =
+        model:raw()
+
+    local per_board =
+        raw_model.per_board or {}
+
+    local target_boards =
+        target.boards or {}
+
+    ------------------------------------------------------------
+    -- deterministic safety check
+    ------------------------------------------------------------
+
+    local board_count =
+        #target_boards
+
+    local model_count =
+        #per_board
+
+    assert(
+        model_count == board_count,
+        "[pricing.materializer] per_board row count mismatch: "
+        .. tostring(model_count) .. " vs "
+        .. tostring(board_count)
+    )
+
+    ------------------------------------------------------------
+    -- construct patch
+    ------------------------------------------------------------
 
     local patch = {
         capability = "board_prices",
@@ -82,35 +116,53 @@ function PricingMaterializer.materialize(target, service_result, capability)
         }
     }
 
-    for board_index, row in ipairs(per_board) do
-        local target_board = target.boards and target.boards[board_index]
-        local recommended_price_per_bf =
-            row and row.recommended_price_per_bf
+    for board_index = 1, board_count do
 
-        if target_board and type(recommended_price_per_bf) == "number" then
-            local unit_board_feet = resolve_board_feet(target_board)
-            local length_feet = resolve_length_feet(target_board)
-            local quantity = resolve_quantity(target_board)
+        local row =
+            per_board[board_index]
 
-            local each_price =
-                unit_board_feet and (recommended_price_per_bf * unit_board_feet) or nil
+        local target_board =
+            target_boards[board_index]
 
-            local lineal_foot_price =
-                (each_price and length_feet and length_feet > 0)
-                and (each_price / length_feet)
-                or nil
+        if row and target_board then
 
-            local batch_price =
-                (each_price and quantity)
-                and (each_price * quantity)
-                or nil
+            local recommended_price_per_bf =
+                row.recommended_price_per_bf
 
-            patch.changes.boards[board_index] = {
-                bf_price    = recommended_price_per_bf,
-                ea_price    = each_price,
-                lf_price    = lineal_foot_price,
-                batch_price = batch_price,
-            }
+            if type(recommended_price_per_bf) == "number" then
+
+                local unit_board_feet =
+                    resolve_board_feet(target_board)
+
+                local length_feet =
+                    resolve_length_feet(target_board)
+
+                local quantity =
+                    resolve_quantity(target_board)
+
+                local each_price =
+                    (unit_board_feet and unit_board_feet > 0)
+                    and (recommended_price_per_bf * unit_board_feet)
+                    or nil
+
+                local lineal_foot_price =
+                    (each_price and length_feet and length_feet > 0)
+                    and (each_price / length_feet)
+                    or nil
+
+                local batch_price =
+                    (each_price and quantity and quantity > 0)
+                    and (each_price * quantity)
+                    or nil
+
+                patch.changes.boards[board_index] = {
+                    bf_price    = recommended_price_per_bf,
+                    ea_price    = each_price,
+                    lf_price    = lineal_foot_price,
+                    batch_price = batch_price,
+                }
+
+            end
         end
     end
 

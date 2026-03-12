@@ -1,14 +1,15 @@
 -- system/execution/controller.lua
 -- function: Executor.run
 
-local Compatibility = require("system.compatibility.controller")
-local Enrichment    = require("system.enrichment.controller")
-local Mutator       = require("system.runtime.mutator")
+local Compatibility  = require("system.compatibility.controller")
+local Enrichment     = require("system.enrichment.controller")
+local Materializer   = require("system.capability.materializer")
+local PatchValidator = require("system.capability.patch_validator")
+local Mutator        = require("system.runtime.mutator")
 
-local Executor = {}
+local Executor       = {}
 
 local function load_service(app, service_name)
-
     local services = app:services()
 
     local constructor =
@@ -27,7 +28,6 @@ local function load_service(app, service_name)
 end
 
 local function build_env(service, selector, opts)
-
     assert(type(service._build_env) == "function",
         "[execution] service._build_env() required")
 
@@ -40,9 +40,10 @@ local function build_env(service, selector, opts)
     return built
 end
 
-function Executor.run(app, service_name, selector, opts)
-
+function Executor.run(app, service_name, opts)
     opts = opts or {}
+
+    local selector = nil
 
     print("\n[execution] BEGIN")
     print("[execution] service:", service_name)
@@ -101,7 +102,7 @@ function Executor.run(app, service_name, selector, opts)
 
     if compat.missing and #compat.missing > 0 then
         print("[execution] missing capabilities:")
-        for _,cap in ipairs(compat.missing) do
+        for _, cap in ipairs(compat.missing) do
             print("   -", cap)
         end
     end
@@ -110,15 +111,40 @@ function Executor.run(app, service_name, selector, opts)
     -- enrichment resolution
     ------------------------------------------------
 
-    if not compat.ok then
+    local force =
+        opts and opts.force == true
 
-        print("[execution] enrichment required")
+    local missing_caps =
+        compat.missing or {}
+
+    if not compat.ok or force then
+
+        if force then
+            print("[execution] enrichment forced")
+        else
+            print("[execution] enrichment required")
+        end
+
+        ------------------------------------------------
+        -- determine capabilities to resolve
+        ------------------------------------------------
+
+        if force then
+            missing_caps = {}
+
+            local provider_registry =
+                require("system.enrichment.providers")
+
+            for capability, _ in pairs(provider_registry) do
+                missing_caps[#missing_caps + 1] = capability
+            end
+        end
 
         local enrichment =
             Enrichment.resolve(app, selector, {
                 service  = service_name,
                 strategy = strategy,
-                missing  = compat.missing or {},
+                missing  = missing_caps,
                 env      = env,
                 opts     = opts,
                 target   = target,
@@ -128,7 +154,7 @@ function Executor.run(app, service_name, selector, opts)
 
         if enrichment.unresolved and #enrichment.unresolved > 0 then
             print("[execution] unresolved capabilities:")
-            for _,u in ipairs(enrichment.unresolved) do
+            for _, u in ipairs(enrichment.unresolved) do
                 print("   -", u.capability, u.reason)
             end
         end
@@ -140,30 +166,57 @@ function Executor.run(app, service_name, selector, opts)
                 error      = "compatibility_mismatch",
                 service    = service_name,
                 strategy   = strategy,
-                missing    = compat.missing or {},
+                missing    = missing_caps,
                 enrichment = enrichment,
             }
+        end
+
+        ------------------------------------------------
+        -- execution owns materialization + patch validation
+        ------------------------------------------------
+
+        local patches = {}
+
+        for _, capability in ipairs(missing_caps) do
+            local provider_result =
+                enrichment.results and enrichment.results[capability]
+
+            if provider_result then
+                local patch =
+                    Materializer.materialize(
+                        capability,
+                        target,
+                        provider_result
+                    )
+
+                if patch then
+                    PatchValidator.validate_patch(patch)
+                    patches[#patches + 1] = patch
+                else
+                    print("[execution] materializer produced NO patch:", capability)
+                end
+            else
+                print("[execution] no provider result to materialize:", capability)
+            end
         end
 
         ------------------------------------------------
         -- execution owns mutation
         ------------------------------------------------
 
-        if enrichment.patches and #enrichment.patches > 0 then
+        if #patches > 0 then
+            print("[execution] applying patches:", #patches)
 
-            print("[execution] applying patches:", #enrichment.patches)
-
-            for i,patch in ipairs(enrichment.patches) do
+            for i, patch in ipairs(patches) do
                 print("[execution] patch", i)
-                for k,v in pairs(patch) do
-                    print("   ",k,type(v))
+                for k, v in pairs(patch) do
+                    print("   ", k, type(v))
                 end
             end
 
-            Mutator.apply(target, enrichment.patches)
-
+            Mutator.apply(target, patches)
         else
-            print("[execution] NO patches returned from enrichment")
+            print("[execution] NO patches produced from enrichment results")
         end
 
         ------------------------------------------------
@@ -212,19 +265,24 @@ function Executor.run(app, service_name, selector, opts)
     -- domain execution
     ------------------------------------------------
 
-    print("[execution] running domain service")
+    local result
 
     if type(service.run_with_env) == "function" then
-        local result = service:run_with_env(built, opts)
-        print("[execution] END")
-        return result
+        result = service:run_with_env(built, opts)
+    else
+        result = service:run(selector, opts)
     end
-
-    local result = service:run(selector, opts)
 
     print("[execution] END")
 
-    return result
+    if type(result) == "table" then
+        return result
+    end
+
+    return {
+        ok = true,
+        result = result
+    }
 end
 
 return Executor
