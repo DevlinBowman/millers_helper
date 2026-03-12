@@ -2,48 +2,163 @@
 
 local Resolver = {}
 
-local function require_batch(envelope,label)
-    assert(type(envelope)=="table","[execution] "..label.." envelope required")
-    assert(type(envelope.batch)=="function","[execution] "..label.." envelope missing batch()")
+------------------------------------------------------------
+-- Helpers
+------------------------------------------------------------
+
+local function require_batch(envelope, label)
+
+    assert(type(envelope) == "table",
+        "[execution] "..label.." envelope required")
+
+    assert(type(envelope.batch) == "function",
+        "[execution] "..label.." envelope missing batch()")
+
     local batch = envelope:batch()
-    assert(type(batch)=="table","[execution] "..label.." batch required")
+
+    assert(type(batch) == "table",
+        "[execution] "..label.." batch required")
+
     return batch
 end
 
-local function wrap_batch(envelope,batch_selector,label)
-    if batch_selector==nil then return envelope end
-    assert(type(batch_selector)=="number","[execution] "..label.." batch selector must be numeric")
 
-    local batches = envelope.__batches
-    assert(type(batches)=="table","[execution] "..label.." envelope has no __batches")
+local function normalize_selector(selector)
 
-    local selected=batches[batch_selector]
-    assert(type(selected)=="table","[execution] invalid "..label.." batch selector: "..tostring(batch_selector))
+    if selector == nil then
+        return {}
+    end
+
+    if type(selector) == "number" then
+        return { batch = selector }
+    end
+
+    if type(selector) == "table" then
+        return selector
+    end
+
+    error("[execution] invalid selector")
+end
+
+
+local function resolve_batch_index(batches, requested)
+
+    local count = #batches
+
+    if count == 0 then
+        return nil
+    end
+
+    -- nil → first
+    if requested == nil then
+        return 1
+    end
+
+    -- out of range → last
+    if requested > count then
+        return count
+    end
+
+    if requested < 1 then
+        return 1
+    end
+
+    return requested
+end
+
+
+local function wrap_batch(envelope, batch)
 
     return setmetatable({},{
-        __index=function(_,k)
-            if k=="batch" then return function() return selected end end
+        __index = function(_, k)
+            if k == "batch" then
+                return function() return batch end
+            end
             return envelope[k]
         end
     })
 end
 
-function Resolver.resolve_job(runtime, resource_selector, batch_selector)
-    local base = runtime:require("user","job",resource_selector)
-    local env  = wrap_batch(base,batch_selector,"job")
-    local batch=require_batch(env,"job")
-    return env,batch
+
+------------------------------------------------------------
+-- Job Resolution
+------------------------------------------------------------
+
+function Resolver.resolve_job(runtime, resource_selector, selection)
+
+    local base =
+        runtime:require("user", "job", resource_selector)
+
+    local batches =
+        base.__batches
+
+    assert(type(batches) == "table",
+        "[execution] job envelope missing batches")
+
+    local selector =
+        normalize_selector(selection)
+
+    local batch_index =
+        resolve_batch_index(batches, selector.batch)
+
+    local batch =
+        batches[batch_index]
+
+    assert(type(batch) == "table",
+        "[execution] job batch resolution failed")
+
+    local env =
+        wrap_batch(base, batch)
+
+    ------------------------------------------------
+    -- optional board targeting
+    ------------------------------------------------
+
+    if selector.board then
+
+        local boards =
+            batch.boards or {}
+
+        local board =
+            boards[selector.board]
+
+        if board then
+            return env, { boards = { board } }, { batch = batch_index, board = selector.board }
+        end
+    end
+
+    return env, batch, { batch = batch_index }
 end
 
-function Resolver.resolve_vendors(runtime,selector)
-    if selector~=nil then
-        local env = runtime:require("system","vendor",selector)
-        local batch=require_batch(env,"vendor")
-        return env,{batch}
+
+------------------------------------------------------------
+-- Vendor Resolution
+------------------------------------------------------------
+
+function Resolver.resolve_vendors(runtime, selection)
+
+    local batches =
+        runtime:batches("system","vendor")
+
+    assert(type(batches) == "table",
+        "[execution] vendor batches required")
+
+    local selector =
+        normalize_selector(selection)
+
+    if selector.batch then
+
+        local batch_index =
+            resolve_batch_index(batches, selector.batch)
+
+        local batch =
+            batches[batch_index]
+
+        return nil, { batch }, { batch = batch_index }
     end
-    local batches=runtime:batches("system","vendor")
-    assert(type(batches)=="table","[execution] vendor batches required")
-    return nil,batches
+
+    return nil, batches, { batch = "all" }
 end
+
 
 return Resolver

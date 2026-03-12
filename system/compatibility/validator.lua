@@ -10,29 +10,90 @@ local function append_unique(out, seen, name)
     end
 end
 
-local function capability_present(name, env)
+------------------------------------------------
+-- capability resolver
+------------------------------------------------
 
-    -- simple capability presence
+local function capability_present(name, env, contract)
+
+    -- simple env field
     if env[name] ~= nil then
         return true
     end
 
-    -- support dotted paths: "job.boards"
+    -- dotted path support
     if name:find("%.") then
 
         local node = env
 
         for part in name:gmatch("[^%.]+") do
             if type(node) ~= "table" then
-                return false
+                node = nil
+                break
             end
             node = node[part]
         end
 
-        return node ~= nil
+        if node ~= nil then
+            return true
+        end
+    end
+
+    ------------------------------------------------
+    -- contract capability function
+    ------------------------------------------------
+
+    if contract
+        and contract.capabilities
+        and type(contract.capabilities[name]) == "function" then
+
+        local ok, result =
+            pcall(contract.capabilities[name], env)
+
+        if ok and result == true then
+            return true
+        end
     end
 
     return false
+end
+
+------------------------------------------------
+-- optional contract env builder
+------------------------------------------------
+
+local function build_contract_env(contract, strategy, env)
+
+    if not contract or type(contract.build_env) ~= "function" then
+        return env
+    end
+
+    ------------------------------------------------
+    -- attempt to translate execution env → contract env
+    ------------------------------------------------
+
+    local source
+    local opts
+
+    if type(env) == "table" then
+
+        if env.source then
+            source = env.source
+        elseif env.job and type(env.job.batch) == "function" then
+            source = env.job:batch()
+        end
+
+        opts = env.opts
+    end
+
+    local ok, built =
+        pcall(contract.build_env, source, strategy, opts)
+
+    if ok and type(built) == "table" then
+        return built
+    end
+
+    return env
 end
 
 ---@param contract table
@@ -55,33 +116,16 @@ function Validator.validate(contract, strategy, env)
 
     local strat
 
-    ------------------------------------------------
-    -- new contract format
-    --
-    -- contract = {
-    --   default = { requires = {...} }
-    -- }
-    ------------------------------------------------
-
     if contract[strategy] then
+
         strat = contract[strategy]
 
-    ------------------------------------------------
-    -- legacy contract format
-    --
-    -- contract = {
-    --   strategies = { ... }
-    -- }
-    ------------------------------------------------
-
     elseif contract.strategies and contract.strategies[strategy] then
+
         strat = contract.strategies[strategy]
 
-    ------------------------------------------------
-    -- fallback to first strategy
-    ------------------------------------------------
-
     else
+
         for _, v in pairs(contract) do
             if type(v) == "table" then
                 strat = v
@@ -99,6 +143,12 @@ function Validator.validate(contract, strategy, env)
         )
     end
 
+    ------------------------------------------------
+    -- normalize env if contract provides builder
+    ------------------------------------------------
+
+    env = build_contract_env(contract, strategy, env)
+
     local missing = {}
     local seen = {}
 
@@ -113,7 +163,7 @@ function Validator.validate(contract, strategy, env)
 
     for _, name in ipairs(required) do
 
-        if not capability_present(name, env) then
+        if not capability_present(name, env, contract) then
             append_unique(missing, seen, name)
         end
 
