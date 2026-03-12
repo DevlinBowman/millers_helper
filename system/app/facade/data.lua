@@ -12,7 +12,8 @@ local Resources = require("system.app.state.resources")
 local RuntimeNS = require("system.app.state.runtime")
 local Session   = require("system.app.state.session")
 local Slots     = require("system.app.state.slots")
-local Intent = require("system.app.state.intent")
+local Intent    = require("system.app.state.intent")
+local Context   = require("system.app.state.context")
 
 ---@class AppDataFacade
 ---@field private __app Surface
@@ -43,7 +44,15 @@ local function build_initial_state()
         runtime = {
             user   = {},
             system = {},
+        },
+        ------------------------------------------------
+        -- transient execution contexts
+        ------------------------------------------------
+        ctx = {
+            active = nil, -- active context id
+            store  = {}   -- id → context
         }
+
     }
 end
 
@@ -63,6 +72,7 @@ function Data.new(app)
         __resources = nil,
         __runtime   = nil,
         __session   = nil,
+        __context   = nil,
     }, Data)
 
     return instance
@@ -151,6 +161,11 @@ function Data:vars()
     return self.__vars
 end
 
+---@return table
+function Data:state()
+    return self.__state
+end
+
 ---@return AppDataSlots
 function Data:slots()
     if not self.__slots then
@@ -198,8 +213,17 @@ function Data:inspect()
         inputs    = self.__state.inputs.by_role,
         resources = self.__state.resources,
         runtime   = self.__state.runtime,
-        slots     = self.__state.slots
+        slots     = self.__state.slots,
+        ctx       = self.__state.ctx
     }
+end
+
+---@return AppDataContext
+function Data:context()
+    if not self.__context then
+        self.__context = Context.new(self.__state)
+    end
+    return self.__context
 end
 
 return Data

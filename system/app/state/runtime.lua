@@ -204,46 +204,46 @@ end
 ---@param role string
 ---@param envelope any
 ---@return any context_wrapped_envelope
-function RuntimeNS:_resolve_context(scope, role, envelope)
-
-    local slots = self.__state.slots
-    local selected =
-        slots
-        and slots.selection
-        and slots.selection[scope]
-        and slots.selection[scope][role]
-
-    if type(selected) ~= "number" then
-        print(string.format(
-            "[RuntimeNS] %s.%s → default batch 1",
-            scope, role
-        ))
-        return envelope
-    end
-
-    if type(envelope.__batches) ~= "table" then
-        return envelope
-    end
-
-    local total = #envelope.__batches
-    local effective = envelope.__batches[selected] and selected or 1
-
-    print(string.format(
-        "[RuntimeNS] ctx %s.%s → slot batch %d (effective %d of %d)",
-        scope, role, selected, effective, total
-    ))
-
-    return setmetatable({}, {
-        __index = function(_, key)
-            if key == "batch" then
-                return function()
-                    return envelope.__batches[effective]
-                end
-            end
-            return envelope[key]
-        end
-    })
-end
+-- function RuntimeNS:_resolve_context(scope, role, envelope)
+--
+--     local slots = self.__state.slots
+--     local selected =
+--         slots
+--         and slots.selection
+--         and slots.selection[scope]
+--         and slots.selection[scope][role]
+--
+--     if type(selected) ~= "number" then
+--         print(string.format(
+--             "[RuntimeNS] %s.%s → default batch 1",
+--             scope, role
+--         ))
+--         return envelope
+--     end
+--
+--     if type(envelope.__batches) ~= "table" then
+--         return envelope
+--     end
+--
+--     local total = #envelope.__batches
+--     local effective = envelope.__batches[selected] and selected or 1
+--
+--     print(string.format(
+--         "[RuntimeNS] ctx %s.%s → slot batch %d (effective %d of %d)",
+--         scope, role, selected, effective, total
+--     ))
+--
+--     return setmetatable({}, {
+--         __index = function(_, key)
+--             if key == "batch" then
+--                 return function()
+--                     return envelope.__batches[effective]
+--                 end
+--             end
+--             return envelope[key]
+--         end
+--     })
+-- end
 ------------------------------------------------------------
 -- Public Require API
 ------------------------------------------------------------
@@ -266,13 +266,14 @@ function RuntimeNS:require(scope, role, selector)
     local index = self:_coerce_index(scope, role, selector)
 
     local envelope = self:get(scope, role, index)
+
     if not envelope then
         envelope = self.__loader(scope, role, index)
         self:set(scope, role, index, envelope)
     end
 
-    -- Context-aware return
-    return self:_resolve_context(scope, role, envelope)
+    -- runtime returns canonical envelope only
+    return envelope
 end
 
 ------------------------------------------------------------

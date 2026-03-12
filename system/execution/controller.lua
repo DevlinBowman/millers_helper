@@ -45,6 +45,29 @@ function Executor.run(app, service_name, opts)
 
     local selector = nil
 
+    local data = app:data()
+    local ctx_controller = data:context()
+
+    ------------------------------------------------
+    -- initialize canonical execution context
+    ------------------------------------------------
+
+    local ctx = ctx_controller:create("execution", {
+        kind       = "execution",
+        service    = service_name,
+        selector   = selector,
+        opts       = opts,
+        strategy   = nil,
+        env        = nil,
+        target     = nil,
+        built      = nil,
+        compat     = nil,
+        enrichment = nil,
+        patches    = {},
+        result     = nil,
+        status     = "initialized"
+    })
+
     print("\n[execution] BEGIN")
     print("[execution] service:", service_name)
     print("[execution] selector:", selector)
@@ -56,6 +79,8 @@ function Executor.run(app, service_name, opts)
     local service =
         load_service(app, service_name)
 
+    ctx.status = "service_loaded"
+
     print("[execution] service loaded")
 
     ------------------------------------------------
@@ -64,8 +89,6 @@ function Executor.run(app, service_name, opts)
 
     local built =
         build_env(service, selector, opts)
-
-    print("[execution] env built")
 
     local strategy =
         built.strategy or "default"
@@ -76,6 +99,13 @@ function Executor.run(app, service_name, opts)
     local target =
         built.target
 
+    ctx.built    = built
+    ctx.strategy = strategy
+    ctx.env      = env
+    ctx.target   = target
+    ctx.status   = "env_built"
+
+    print("[execution] env built")
     print("[execution] strategy:", strategy)
     print("[execution] target present:", type(target) == "table")
 
@@ -97,6 +127,9 @@ function Executor.run(app, service_name, opts)
             strategy,
             env
         )
+
+    ctx.compat = compat
+    ctx.status = "compat_checked"
 
     print("[execution] compatibility ok:", compat.ok)
 
@@ -140,6 +173,8 @@ function Executor.run(app, service_name, opts)
             end
         end
 
+        ctx.status = "enrichment_resolving"
+
         local enrichment =
             Enrichment.resolve(app, selector, {
                 service  = service_name,
@@ -149,6 +184,9 @@ function Executor.run(app, service_name, opts)
                 opts     = opts,
                 target   = target,
             })
+
+        ctx.enrichment = enrichment
+        ctx.status     = "enrichment_resolved"
 
         print("[execution] enrichment result ok:", enrichment.ok)
 
@@ -161,6 +199,11 @@ function Executor.run(app, service_name, opts)
 
         if not enrichment.ok then
             print("[execution] enrichment FAILED")
+
+            ctx.status = "failed_enrichment"
+
+            ctx_controller:clear("execution")
+
             return {
                 ok         = false,
                 error      = "compatibility_mismatch",
@@ -176,12 +219,15 @@ function Executor.run(app, service_name, opts)
         ------------------------------------------------
 
         local patches = {}
+        ctx.patches = patches
 
         for _, capability in ipairs(missing_caps) do
+
             local provider_result =
                 enrichment.results and enrichment.results[capability]
 
             if provider_result then
+
                 local patch =
                     Materializer.materialize(
                         capability,
@@ -195,6 +241,7 @@ function Executor.run(app, service_name, opts)
                 else
                     print("[execution] materializer produced NO patch:", capability)
                 end
+
             else
                 print("[execution] no provider result to materialize:", capability)
             end
@@ -209,14 +256,17 @@ function Executor.run(app, service_name, opts)
 
             for i, patch in ipairs(patches) do
                 print("[execution] patch", i)
-                for k, v in pairs(patch) do
-                    print("   ", k, type(v))
+                for key, value in pairs(patch) do
+                    print("   ", key, type(value))
                 end
             end
 
             Mutator.apply(target, patches)
+            ctx.status = "patched"
+
         else
             print("[execution] NO patches produced from enrichment results")
+            ctx.status = "no_patches"
         end
 
         ------------------------------------------------
@@ -237,6 +287,12 @@ function Executor.run(app, service_name, opts)
         target =
             built.target
 
+        ctx.built    = built
+        ctx.strategy = strategy
+        ctx.env      = env
+        ctx.target   = target
+        ctx.status   = "env_rebuilt"
+
         print("[execution] env rebuilt")
 
         compat =
@@ -246,10 +302,17 @@ function Executor.run(app, service_name, opts)
                 env
             )
 
+        ctx.compat = compat
+        ctx.status = "compat_rechecked"
+
         print("[execution] compatibility after enrichment:", compat.ok)
 
         if not compat.ok then
             print("[execution] compatibility STILL failing")
+
+            ctx.status = "failed_after_enrichment"
+
+            ctx_controller:clear("execution")
 
             return {
                 ok       = false,
@@ -265,6 +328,8 @@ function Executor.run(app, service_name, opts)
     -- domain execution
     ------------------------------------------------
 
+    ctx.status = "running_service"
+
     local result
 
     if type(service.run_with_env) == "function" then
@@ -273,7 +338,16 @@ function Executor.run(app, service_name, opts)
         result = service:run(selector, opts)
     end
 
+    ctx.result = result
+    ctx.status = "complete"
+
     print("[execution] END")
+
+    ------------------------------------------------
+    -- clear transient execution context
+    ------------------------------------------------
+
+    ctx_controller:clear("execution")
 
     if type(result) == "table" then
         return result
