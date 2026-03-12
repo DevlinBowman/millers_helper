@@ -47,10 +47,49 @@ function Validator.validate(contract, strategy, env)
     assert(type(env) == "table",
         "[compatibility.validator] env required")
 
+    ------------------------------------------------
+    -- normalize strategy
+    ------------------------------------------------
+
     strategy = strategy or "default"
 
-    local strat =
-        (contract.strategies or {})[strategy]
+    local strat
+
+    ------------------------------------------------
+    -- new contract format
+    --
+    -- contract = {
+    --   default = { requires = {...} }
+    -- }
+    ------------------------------------------------
+
+    if contract[strategy] then
+        strat = contract[strategy]
+
+    ------------------------------------------------
+    -- legacy contract format
+    --
+    -- contract = {
+    --   strategies = { ... }
+    -- }
+    ------------------------------------------------
+
+    elseif contract.strategies and contract.strategies[strategy] then
+        strat = contract.strategies[strategy]
+
+    ------------------------------------------------
+    -- fallback to first strategy
+    ------------------------------------------------
+
+    else
+        for _, v in pairs(contract) do
+            if type(v) == "table" then
+                strat = v
+                strategy = "default"
+                break
+            end
+        end
+    end
 
     if not strat then
         error(
@@ -64,10 +103,15 @@ function Validator.validate(contract, strategy, env)
     local seen = {}
 
     ------------------------------------------------
-    -- base requirements
+    -- required capabilities
     ------------------------------------------------
 
-    for _, name in ipairs((contract.base and contract.base.required) or {}) do
+    local required =
+        strat.requires
+        or strat.required
+        or {}
+
+    for _, name in ipairs(required) do
 
         if not capability_present(name, env) then
             append_unique(missing, seen, name)
@@ -76,20 +120,12 @@ function Validator.validate(contract, strategy, env)
     end
 
     ------------------------------------------------
-    -- strategy requirements
+    -- result
     ------------------------------------------------
-
-    for _, name in ipairs(strat.required or {}) do
-
-        if not capability_present(name, env) then
-            append_unique(missing, seen, name)
-        end
-
-    end
 
     return {
-        ok = (#missing == 0),
-        missing = missing,
+        ok       = (#missing == 0),
+        missing  = missing,
         strategy = strategy,
     }
 end

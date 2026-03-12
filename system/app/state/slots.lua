@@ -30,6 +30,9 @@ end
 ---@param scope "system"|"user"
 ---@param role string
 ---@param value number|string
+---@param scope "system"|"user"
+---@param role string
+---@param value number|string
 function Slots:set_selection(scope, role, value)
     assert(scope == "system" or scope == "user",
         "[slots] invalid scope")
@@ -38,6 +41,8 @@ function Slots:set_selection(scope, role, value)
     assert(type(value) == "number" or type(value) == "string",
         "[slots] selection must be number (index) or string (id)")
 
+    -- Slots store canonical selection intent only.
+    -- Resolution/validation depends on role semantics and happens later.
     self.__state.slots.selection[scope][role] = value
 end
 

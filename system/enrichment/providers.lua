@@ -13,12 +13,25 @@ local Providers = {}
 
 local function provide_board_prices(app, selector, env)
 
-    local job = env.job
-    if type(job) ~= "table" then
+    local job_envelope =
+        env.job
+
+    if type(job_envelope) ~= "table" then
         return nil
     end
 
-    if type(job.boards) ~= "table" then
+    if type(job_envelope.batch) ~= "function" then
+        return nil
+    end
+
+    local job_batch =
+        job_envelope:batch()
+
+    if type(job_batch) ~= "table" then
+        return nil
+    end
+
+    if type(job_batch.boards) ~= "table" then
         return nil
     end
 
@@ -32,9 +45,10 @@ local function provide_board_prices(app, selector, env)
 
     local result =
         PricingDomain.run(
-            job,
+            job_batch,
             basis,
-            opts
+            opts,
+            env.vendors or {}
         )
 
     if not result then
