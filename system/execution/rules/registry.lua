@@ -3,6 +3,7 @@ local Registry = {}
 Registry.rules = {
     quote   = "system.execution.rules.quote",
     compare = "system.execution.rules.compare",
+    pricing = "system.execution.rules.pricing",
 }
 
 function Registry.resolve(service)

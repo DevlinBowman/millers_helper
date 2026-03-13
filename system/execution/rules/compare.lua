@@ -1,21 +1,90 @@
 -- system/execution/rules/compare.lua
 -- function: CompareRules.plan
+--
+-- Determines execution order for compare service.
+--
+-- Rules:
+--
+-- 1. If opts.force == true
+--        → pricing → compare
+--
+-- 2. If pricing is not ready AND pricing intent exists
+--        → pricing → compare
+--
+-- 3. Otherwise
+--        → compare
 
 local CompareRules = {}
+
+local Schema = require("core.schema")
 
 ------------------------------------------------
 -- Helpers
 ------------------------------------------------
 
-local function boards_have_prices(batch)
+local PRICE_FIELDS = {
+    "bf_price",
+    "ea_price",
+    "lf_price",
+}
+
+local function board_price_fields_present(board)
+
+    if type(board) ~= "table" then
+        return false
+    end
+
+    local missing =
+        Schema.object.missing("board", board)
+
+    local missing_set = {}
+
+    for _, field_name in ipairs(missing or {}) do
+        missing_set[field_name] = true
+    end
+
+    for _, field_name in ipairs(PRICE_FIELDS) do
+        if missing_set[field_name] then
+            return false
+        end
+    end
+
+    return true
+end
+
+
+local function board_price_fields_populated(board)
+
+    if not board_price_fields_present(board) then
+        return false
+    end
+
+    if type(board.bf_price) ~= "number" or board.bf_price <= 0 then
+        return false
+    end
+
+    if type(board.ea_price) ~= "number" or board.ea_price <= 0 then
+        return false
+    end
+
+    if type(board.lf_price) ~= "number" or board.lf_price <= 0 then
+        return false
+    end
+
+    return true
+end
+
+
+local function batch_pricing_ready(batch)
 
     local boards = batch and batch.boards
-    if type(boards) ~= "table" then
+
+    if type(boards) ~= "table" or #boards == 0 then
         return false
     end
 
     for _, board in ipairs(boards) do
-        if type(board.bf_price) ~= "number" then
+        if not board_price_fields_populated(board) then
             return false
         end
     end
@@ -31,32 +100,45 @@ end
 ---@return table
 function CompareRules.plan(ctx)
 
-    local plan = {}
+    local batch =
+        ctx.target
 
-    local batch = ctx.target
-    local intent = ctx.intent
-    local opts = ctx.opts or {}
-    local force = opts.force == true
-    local pricing_intent = intent and intent.get and intent:get("pricing")
-    local has_prices = boards_have_prices(batch)
+    local intent =
+        ctx.intent
+
+    local opts =
+        ctx.opts or {}
+
+    local force =
+        opts.force == true
+
+    local pricing_intent =
+        intent and intent.get and intent:get("pricing")
+
+    local pricing_ready =
+        batch_pricing_ready(batch)
 
     ------------------------------------------------
-    -- pricing rules
+    -- forced pricing
     ------------------------------------------------
 
     if force then
-        plan[#plan+1] = "pricing"
-    elseif not has_prices and pricing_intent then
-        plan[#plan+1] = "pricing"
+        return { "pricing", "compare" }
     end
 
     ------------------------------------------------
-    -- compare always runs
+    -- pricing required for compare
     ------------------------------------------------
 
-    plan[#plan+1] = "compare"
+    if not pricing_ready and pricing_intent then
+        return { "pricing", "compare" }
+    end
 
-    return plan
+    ------------------------------------------------
+    -- default
+    ------------------------------------------------
+
+    return { "compare" }
 end
 
 return CompareRules

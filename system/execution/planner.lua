@@ -44,51 +44,102 @@ end
 ---@param opts table
 ---@return table
 function Planner.build(app, service_name, opts)
-    local data = app:data()
-    local runtime = data:runtime()
-    local slots = data:slots()
-    local intent = data:intent()
+    local TargetResolver                              = require("system.execution.target_resolver")
+    local RuleRegistry                                = require("system.execution.rules.registry")
 
-    local job_resource_selector = resolve_job_resource_selector(opts)
-    local job_batch_selector = resolve_job_batch_selector(opts, slots)
-    local vendor_selector = resolve_vendor_selector(opts, slots)
+    local data                                        = app:data()
+    local runtime                                     = data:runtime()
+    local slots                                       = data:slots()
+    local intent                                      = data:intent()
 
-    local job_env, job_batch, job_resolved =
+    local job_resource_selector                       = resolve_job_resource_selector(opts)
+    local job_batch_selector                          = resolve_job_batch_selector(opts, slots)
+    local vendor_selector                             = resolve_vendor_selector(opts, slots)
+
+    local job_env, job_batch, job_resolved            =
         TargetResolver.resolve_job(runtime, job_resource_selector, job_batch_selector)
 
     local vendor_env, vendor_batches, vendor_resolved =
         TargetResolver.resolve_vendors(runtime, vendor_selector)
 
-    local strategy =
+    local strategy                                    =
         resolve_strategy(service_name, data, opts)
 
-    return {
-        kind = "execution",
-        service = service_name,
-        opts = opts,
-        status = "env_ready",
-        strategy = strategy,
-        job_resource_selector = job_resource_selector,
-        job_batch_selector = job_batch_selector,
-        job_resolved_selector = job_resolved,
-        vendor_resolved_selector = vendor_resolved,
-        vendor_selector = vendor_selector,
+    ------------------------------------------------------------
+    -- Build rule context
+    ------------------------------------------------------------
 
-        env = {
-            job = job_env,
-            vendor = vendor_env,
-            vendors = vendor_batches,
-            pricing_basis = strategy,
-            opts = opts,
-            intent = intent,
-            slots = slots
+    ------------------------------------------------------------
+    -- Build rule context
+    ------------------------------------------------------------
+
+    local rule_ctx                                    = {
+        service  = service_name,
+        target   = job_batch,
+
+        env      = {
+            job     = job_env,
+            vendor  = vendor_env,
+            vendors = vendor_batches
         },
 
-        target = job_batch,
-        compat = nil,
-        enrichment = nil,
-        patches = {},
-        result = nil
+        intent   = intent,
+        opts     = opts,
+        strategy = strategy
+    }
+
+    ------------------------------------------------------------
+    -- Resolve rule and execution plan
+    ------------------------------------------------------------
+
+    local rule                                        = RuleRegistry.resolve(service_name)
+
+    local plan
+
+    if type(rule) == "table" and type(rule.plan) == "function" then
+        plan = rule.plan(rule_ctx)
+    else
+        plan = { service_name }
+    end
+
+    ------------------------------------------------------------
+    -- Return execution context
+    ------------------------------------------------------------
+
+    return {
+        kind                     = "execution",
+
+        service                  = service_name,
+        plan                     = plan,
+
+        opts                     = opts,
+        status                   = "env_ready",
+
+        strategy                 = strategy,
+
+        job_resource_selector    = job_resource_selector,
+        job_batch_selector       = job_batch_selector,
+
+        job_resolved_selector    = job_resolved,
+        vendor_resolved_selector = vendor_resolved,
+
+        vendor_selector          = vendor_selector,
+
+        env                      = {
+            job           = job_env,
+            vendor        = vendor_env,
+            vendors       = vendor_batches,
+            pricing_basis = strategy,
+            opts          = opts,
+            intent        = intent,
+            slots         = slots
+        },
+
+        target                   = job_batch,
+        compat                   = nil,
+        enrichment               = nil,
+        patches                  = {},
+        result                   = nil
     }
 end
 
