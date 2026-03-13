@@ -1,6 +1,6 @@
--- system/compatibility/missing.lua
+-- system/pipeline/compatibility/missing.lua
 
-local Validator = require("system.compatibility.validator")
+local Validator = require("system.pipeline.compatibility.validator")
 
 local Missing = {}
 

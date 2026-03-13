@@ -1,6 +1,6 @@
--- system/capability/materializer.lua
+-- system/pipeline/capability/materializer.lua
 
-local Registry = require("system.capability.registry")
+local Registry = require("system.pipeline.capability.registry")
 
 local Materializer = {}
 

@@ -1,4 +1,4 @@
--- system/enrichment/controller.lua
+-- system/pipeline/enrichment/controller.lua
 --
 -- Capability resolution layer.
 --
@@ -12,7 +12,7 @@
 --   • validate patches
 --   • mutate runtime
 
-local BuiltinProviders = require("system.enrichment.providers")
+local BuiltinProviders = require("system.pipeline.enrichment.providers")
 
 local Enrichment = {}
 

@@ -1,4 +1,4 @@
--- system/compatibility/validator.lua
+-- system/pipeline/compatibility/validator.lua
 -- function: Validator.validate
 
 local Validator = {}

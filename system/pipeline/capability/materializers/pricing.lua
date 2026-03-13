@@ -1,4 +1,4 @@
--- system/capability/materializers/pricing.lua
+-- system/pipeline/capability/materializers/pricing.lua
 
 local Formula = require("core.formula").board
 

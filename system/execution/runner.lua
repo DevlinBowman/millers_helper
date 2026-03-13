@@ -1,10 +1,10 @@
 -- system/execution/runner.lua
 
-local Compatibility  = require("system.compatibility.controller")
-local Enrichment     = require("system.enrichment.controller")
-local Materializer   = require("system.capability.materializer")
-local PatchValidator = require("system.capability.patch_validator")
-local Mutator        = require("system.runtime.mutator")
+local Compatibility  = require("system.pipeline.compatibility.controller")
+local Enrichment     = require("system.pipeline.enrichment.controller")
+local Materializer   = require("system.pipeline.capability.materializer")
+local PatchValidator = require("system.pipeline.capability.patch_validator")
+local Mutator        = require("system.pipeline.runtime.mutator")
 
 local Runner = {}
 
@@ -25,16 +25,14 @@ local function resolve_capability_list(missing, force)
     end
     if not force then return out end
 
-    local registry = require("system.enrichment.providers")
+    local registry = require("system.pipeline.enrichment.providers")
     for cap,_ in pairs(registry) do
         if not seen[cap] then seen[cap]=true out[#out+1]=cap end
     end
     return out
 end
 
----@param app Surface
----@param ctx table
----@return any
+
 ---@param app Surface
 ---@param ctx table
 ---@return any
@@ -51,193 +49,105 @@ function Runner.execute(app, ctx)
         print(indent .. msg)
     end
 
-    log("[execution] BEGIN")
-    log(string.format("[execution] service:  %s", tostring(ctx.service)))
-
     ------------------------------------------------
-    -- service-relevant context
+    -- execution rule: quote requires pricing
     ------------------------------------------------
 
-    if ctx.service ~= "pricing" then
-        local resource = ctx.job_resource_selector or 1
-        local batch = (ctx.job_resolved_selector and ctx.job_resolved_selector.batch) or "?"
-        log(string.format("[execution] target:   job[%s] -> batch[%s]", tostring(resource), tostring(batch)))
+    local services_to_run = { ctx.service }
+    local intent = ctx.env and ctx.env.intent
+    local pricing_intent = intent and intent.get and intent:get("pricing")
 
-        if ctx.target and ctx.target.boards then
-            log(string.format("[execution] boards:   %d", #ctx.target.boards))
-        end
-    end
-
-    if ctx.service == "pricing" then
-        if ctx.env and ctx.env.vendors then
-            log(string.format("[execution] vendors:  %d", #ctx.env.vendors))
-        end
-        if ctx.strategy then
-            log(string.format("[execution] strategy: %s", tostring(ctx.strategy)))
-        end
+    if ctx.service == "quote" and pricing_intent then
+        services_to_run = { "pricing", "quote" }
     end
 
     ------------------------------------------------
-    -- load service
+    -- execution loop
     ------------------------------------------------
 
-    assert(type(ctx.target)=="table","[execution] target batch required")
+    local final_result
 
-    local service = load_service(app, ctx.service)
-    ctx.status="service_loaded"
+    for i = 1, #services_to_run do
 
-    ------------------------------------------------
-    -- compatibility
-    ------------------------------------------------
+        local service_name = services_to_run[i]
 
-    local compat =
-        Compatibility.check(ctx.service, ctx.strategy, ctx.env)
+        log("[execution] BEGIN")
+        log(string.format("[execution] service:  %s", tostring(service_name)))
 
-    ctx.compat = compat
-    log("[execution] compatibility ok: " .. tostring(compat.ok))
+        ------------------------------------------------
+        -- service context info
+        ------------------------------------------------
 
-    if compat.missing and #compat.missing > 0 then
-        log("[execution] missing capabilities:")
-        for _, cap in ipairs(compat.missing) do
-            log("   - " .. tostring(cap))
-        end
-    end
+        if service_name ~= "pricing" then
+            local resource = ctx.job_resource_selector or 1
+            local batch = (ctx.job_resolved_selector and ctx.job_resolved_selector.batch) or "?"
 
-    ------------------------------------------------
-    -- enrichment
-    ------------------------------------------------
+            log(string.format(
+                "[execution] target:   job[%s] -> batch[%s]",
+                tostring(resource),
+                tostring(batch)
+            ))
 
-    local opts = ctx.opts or {}
-    local force = opts.force == true
+            if ctx.target and ctx.target.boards then
+                log(string.format("[execution] boards:   %d", #ctx.target.boards))
+            end
+        else
+            if ctx.env and ctx.env.vendors then
+                log(string.format("[execution] vendors:  %d", #ctx.env.vendors))
+            end
 
-    local capabilities =
-        resolve_capability_list(compat.missing or {}, force)
-
-    ------------------------------------------------
-    -- pricing intent expansion
-    ------------------------------------------------
-
-    local intent =
-        ctx.env and ctx.env.intent
-
-    local pricing_intent =
-        intent and intent.get and intent:get("pricing")
-
-    if pricing_intent then
-
-        local exists = false
-
-        for _, cap in ipairs(capabilities) do
-            if cap == "board_prices" then
-                exists = true
-                break
+            if ctx.strategy then
+                log(string.format("[execution] strategy: %s", tostring(ctx.strategy)))
             end
         end
 
-        if not exists then
-            capabilities[#capabilities + 1] = "board_prices"
-        end
+        ------------------------------------------------
+        -- load service
+        ------------------------------------------------
 
-    end
+        local service = load_service(app, service_name)
 
-    ------------------------------------------------
+        ctx.status = "running"
 
-    if force then
-        log("[execution] enrichment forced")
-    end
+        ------------------------------------------------
+        -- run service
+        ------------------------------------------------
 
-    if force or not compat.ok then
+        local result = service:run(ctx)
 
-        ctx.status="enrichment_resolving"
+        ------------------------------------------------
+        -- materialize pricing if needed
+        ------------------------------------------------
 
-        local enrichment =
-            Enrichment.resolve(app, ctx.job_resource_selector,{
-                service  = ctx.service,
-                strategy = ctx.strategy,
-                missing  = capabilities,
-                env      = ctx.env,
-                opts     = opts,
-                target   = ctx.target,
-                depth    = ctx.depth + 1
-            })
+        if service_name == "pricing" and type(result) == "table" then
 
-        ctx.enrichment = enrichment
-        log("[execution] enrichment ok: " .. tostring(enrichment.ok))
+            local patch =
+                Materializer.materialize(
+                    "board_prices",
+                    ctx.target,
+                    {
+                        ok = true,
+                        capability = "board_prices",
+                        result = result
+                    }
+                )
 
-        if enrichment.unresolved and #enrichment.unresolved > 0 then
-            log("[execution] unresolved capabilities:")
-            for _, item in ipairs(enrichment.unresolved) do
-                log("   - " .. tostring(item.capability) .. " " .. tostring(item.reason))
-            end
-        end
-
-        if not enrichment.ok then
-            ctx.status="failed_enrichment"
-            return { ok=false, error="compatibility_mismatch", service=ctx.service, missing=capabilities }
-        end
-
-        local patches = {}
-
-        for cap, result in pairs(enrichment.results or {}) do
-            local patch = Materializer.materialize(cap, ctx.target, result)
             if patch then
                 PatchValidator.validate_patch(patch)
-                patches[#patches+1] = patch
+                Mutator.apply(ctx.target, { patch })
+                log("[execution] pricing mutation applied")
             end
         end
 
-        ctx.patches = patches
+        log("[execution] END")
 
-        if #patches > 0 then
-            log("[execution] applying patches: " .. tostring(#patches))
-            Mutator.apply(ctx.target, patches)
-        else
-            log("[execution] no patches produced")
-        end
+        final_result = result
     end
 
-    ------------------------------------------------
-    -- service run
-    ------------------------------------------------
-
-    ctx.status="running"
-
-    local result = service:run(ctx)
-
-    ------------------------------------------------
-    -- materialize service capability result
-    ------------------------------------------------
-
-    local service_capability_map = {
-        pricing = "board_prices"
-    }
-
-    local capability = service_capability_map[ctx.service]
-
-    if capability and type(result) == "table" then
-        local patch =
-            Materializer.materialize(
-                capability,
-                ctx.target,
-                {
-                    ok = true,
-                    capability = capability,
-                    result = result
-                }
-            )
-
-        if patch then
-            PatchValidator.validate_patch(patch)
-            Mutator.apply(ctx.target, { patch })
-        end
-    end
-
-    ctx.result = result
+    ctx.result = final_result
     ctx.status = "complete"
 
-    log("[execution] END")
-
-    return result
+    return final_result
 end
 
 return Runner

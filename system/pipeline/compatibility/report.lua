@@ -1,4 +1,4 @@
--- system/compatibility/report.lua
+-- system/pipeline/compatibility/report.lua
 
 local Report = {}
 

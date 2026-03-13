@@ -1,6 +1,6 @@
 -- system/app/services/enrichment_runner.lua
 
-local Enrichment = require("system.enrichment.controller")
+local Enrichment = require("system.pipeline.enrichment.controller")
 
 local Runner = {}
 

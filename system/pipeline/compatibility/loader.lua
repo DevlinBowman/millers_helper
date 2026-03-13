@@ -1,4 +1,4 @@
--- system/compatibility/loader.lua
+-- system/pipeline/compatibility/loader.lua
 
 local Loader = {}
 

@@ -1,9 +1,9 @@
--- system/capability/registry.lua
+-- system/pipeline/capability/registry.lua
 
 local Registry = {}
 
 Registry.materializers = {
-    board_prices = "system.capability.materializers.pricing",
+    board_prices = "system.pipeline.capability.materializers.pricing",
 }
 
 ---@param capability string

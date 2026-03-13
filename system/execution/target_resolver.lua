@@ -6,23 +6,6 @@ local Resolver = {}
 -- Helpers
 ------------------------------------------------------------
 
-local function require_batch(envelope, label)
-
-    assert(type(envelope) == "table",
-        "[execution] "..label.." envelope required")
-
-    assert(type(envelope.batch) == "function",
-        "[execution] "..label.." envelope missing batch()")
-
-    local batch = envelope:batch()
-
-    assert(type(batch) == "table",
-        "[execution] "..label.." batch required")
-
-    return batch
-end
-
-
 local function normalize_selector(selector)
 
     if selector == nil then

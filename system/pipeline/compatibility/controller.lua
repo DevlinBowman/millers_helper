@@ -1,7 +1,7 @@
--- system/compatibility/controller.lua
+-- system/pipeline/compatibility/controller.lua
 
-local Loader    = require("system.compatibility.loader")
-local Validator = require("system.compatibility.validator")
+local Loader    = require("system.pipeline.compatibility.loader")
+local Validator = require("system.pipeline.compatibility.validator")
 
 local Compatibility = {}
 

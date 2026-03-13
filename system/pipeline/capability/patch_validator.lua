@@ -1,4 +1,4 @@
--- system/capability/patch_validator.lua
+-- system/pipeline/capability/patch_validator.lua
 
 local PatchValidator = {}
 
