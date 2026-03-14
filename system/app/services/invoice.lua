@@ -3,9 +3,16 @@
 local InvoiceDomain = require("core.domain.invoice").controller
 
 ---@class AppInvoiceService
+---@field private __app Surface
 local Invoice = {}
 Invoice.__index = Invoice
 
+------------------------------------------------------------
+-- Constructor
+------------------------------------------------------------
+
+---@param app Surface
+---@return AppInvoiceService
 function Invoice.new(app)
     return setmetatable({
         __app = app
@@ -13,24 +20,29 @@ function Invoice.new(app)
 end
 
 ------------------------------------------------------------
--- Run Invoice From Runtime Batch
+-- Run Invoice
 ------------------------------------------------------------
 
----@param selector integer|string|nil
----@param opts table|nil
+---@param ctx table|nil
 ---@return table
-function Invoice:run(selector, opts)
+function Invoice:run(ctx)
 
-    local runtime = self.__app:data():runtime()
+    local target =
+        ctx and ctx.target
 
-    local batch = runtime:require("user", "job", selector)
+    assert(type(target) == "table",
+        "[invoice.service] execution target missing")
 
-    assert(type(batch.batch) == "function",
-        "[invoice.service] runtime job missing batch()")
+    assert(type(target.batch) == "table",
+        "[invoice.service] target batch missing")
 
-    local raw = batch:batch()
+    local opts =
+        (ctx and ctx.env and ctx.env.opts) or {}
 
-    return InvoiceDomain.run_strict(raw, opts)
+    return InvoiceDomain.run_strict(
+        target.batch,
+        opts
+    )
 end
 
 return Invoice

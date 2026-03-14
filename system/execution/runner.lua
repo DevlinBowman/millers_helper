@@ -1,8 +1,9 @@
 -- system/execution/runner.lua
 
-local Materializer   = require("system.pipeline.capability.materializer")
-local PatchValidator = require("system.pipeline.capability.patch_validator")
-local Mutator        = require("system.pipeline.runtime.mutator")
+local Projector      = require("system.execution.projection.projector")
+local PatchValidator = require("system.execution.mutation.patch_validator")
+local Mutator        = require("system.execution.mutation.mutator")
+local Reporter       = require("system.execution.report")
 
 local Runner = {}
 
@@ -12,14 +13,17 @@ local Runner = {}
 
 local function load_service(app, service_name)
 
-    local services = app:services()
+    local services =
+        app:services()
 
-    local ctor = services[service_name]
+    local ctor =
+        services[service_name]
 
     assert(type(ctor) == "function",
         "[execution] unknown service: " .. tostring(service_name))
 
-    local service = ctor(services)
+    local service =
+        ctor(services)
 
     assert(type(service) == "table",
         "[execution] service instance required")
@@ -35,19 +39,10 @@ end
 -- Execution
 ------------------------------------------------------------
 
----@param app Surface
----@param ctx table
----@return any
 function Runner.execute(app, ctx)
 
-    ctx.depth = (ctx.depth or 0)
-
-    local indent =
-        string.rep("  ", ctx.depth)
-
-    local function log(msg)
-        print(indent .. msg)
-    end
+    ctx.depth =
+        (ctx.depth or 0)
 
     local plan =
         ctx.plan or { ctx.service }
@@ -56,74 +51,7 @@ function Runner.execute(app, ctx)
 
     for _, service_name in ipairs(plan) do
 
-        log("[execution] BEGIN")
-        log(string.format(
-            "[execution] service:  %s",
-            tostring(service_name)
-        ))
-
-        ------------------------------------------------
-        -- Context logging
-        ------------------------------------------------
-
-        if service_name ~= "pricing" then
-
-            local batch =
-                (ctx.resolved
-                and ctx.resolved.job
-                and ctx.resolved.job.batch)
-                or "?"
-
-            log(string.format(
-                "[execution] target:   job -> batch[%s]",
-                tostring(batch)
-            ))
-
-            if ctx.target and ctx.target.boards then
-                log(string.format(
-                    "[execution] boards:   %d",
-                    #ctx.target.boards
-                ))
-            end
-
-        else
-
-            if ctx.env and ctx.env.vendors then
-
-                local selector =
-                    ctx.resolved
-                    and ctx.resolved.vendors
-
-                if selector
-                and selector.batch
-                and selector.batch ~= "all" then
-
-                    log(string.format(
-                        "[execution] vendor batch: %s",
-                        tostring(selector.batch)
-                    ))
-
-                else
-
-                    log(string.format(
-                        "[execution] vendors: %d (all)",
-                        #ctx.env.vendors
-                    ))
-
-                end
-            end
-
-            if ctx.strategy then
-                log(string.format(
-                    "[execution] strategy: %s",
-                    tostring(ctx.strategy)
-                ))
-            end
-        end
-
-        ------------------------------------------------
-        -- Load service
-        ------------------------------------------------
+        Reporter.begin(ctx, service_name)
 
         local service =
             load_service(app, service_name)
@@ -135,38 +63,37 @@ function Runner.execute(app, ctx)
             service:run(ctx)
 
         ------------------------------------------------
-        -- Capability materialization
+        -- materialization
         ------------------------------------------------
 
-        if service_name == "pricing"
-        and type(result) == "table" then
+        local patch =
+            Projector.materialize(
+                service_name,
+                ctx.target,
+                {
+                    ok     = true,
+                    result = result
+                }
+            )
 
-            local patch =
-                Materializer.materialize(
-                    "board_prices",
-                    ctx.target,
-                    {
-                        ok         = true,
-                        capability = "board_prices",
-                        result     = result
-                    }
-                )
+        ------------------------------------------------
+        -- mutation
+        ------------------------------------------------
 
-            if patch then
+        if patch then
 
-                PatchValidator.validate_patch(patch)
+            PatchValidator.validate_patch(patch)
 
-                Mutator.apply(
-                    ctx.target.batch,
-                    { patch }
-                )
+            Mutator.apply(
+                ctx.target.batch,
+                { patch }
+            )
 
-                log("[execution] pricing mutation applied")
+            Reporter.mutation(ctx, patch.capability)
 
-            end
         end
 
-        log("[execution] END")
+        Reporter.finish(ctx)
 
         final_result = result
     end

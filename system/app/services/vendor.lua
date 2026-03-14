@@ -31,16 +31,30 @@ end
 ---@return table
 function Vendor:run(ctx)
 
-    assert(type(ctx) == "table", "[vendor.service] ctx required")
-    assert(type(ctx.env) == "table", "[vendor.service] ctx.env missing")
-    assert(type(ctx.env.vendor) == "table", "[vendor.service] ctx.env.vendor missing")
+    assert(type(ctx) == "table",
+        "[vendor.service] ctx required")
+
+    assert(type(ctx.env) == "table",
+        "[vendor.service] ctx.env missing")
+
+    assert(type(ctx.env.vendor) == "table",
+        "[vendor.service] ctx.env.vendor missing")
+
+    assert(type(ctx.env.vendors) == "table",
+        "[vendor.service] ctx.env.vendors missing")
 
     ------------------------------------------------------------
-    -- Resolve vendor batch
+    -- Service requires a single resolved vendor batch
     ------------------------------------------------------------
+
+    local vendor_batches =
+        ctx.env.vendors
+
+    assert(#vendor_batches == 1,
+        "[vendor.service] vendor service requires a single selected vendor batch")
 
     local vendor_batch =
-        ctx.env.vendor:batch()
+        vendor_batches[1]
 
     assert(type(vendor_batch) == "table",
         "[vendor.service] vendor batch missing")
@@ -86,7 +100,7 @@ function Vendor:run(ctx)
             vendor_name,
             vendor_batch.boards,
             target_path,
-            ctx.opts or { codec = "delimited" }
+            (ctx.env and ctx.env.opts) or { codec = "delimited" }
         )
 
     ------------------------------------------------------------
