@@ -18,6 +18,8 @@ local FSFacade       = require("system.app.facade.fs")
 local DataFacade     = require("system.app.facade.data")
 local ServicesFacade = require("system.app.facade.services")
 
+local ExecutionFacade = require("system.app.facade.execution")
+
 local API = require("system.app.api.controller")
 
 ---@class Surface
@@ -162,6 +164,20 @@ function Surface:api()
         self._api = API.new(self)
     end
     return self._api
+end
+
+------------------------------------------------------------
+-- Capability: Execution
+------------------------------------------------------------
+
+---@return AppExecutionFacade
+function Surface:execution()
+
+    if not self._execution then
+        self._execution = ExecutionFacade.new(self)
+    end
+
+    return self._execution
 end
 
 return Surface

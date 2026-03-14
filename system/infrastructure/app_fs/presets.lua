@@ -35,17 +35,11 @@ end
 
 function Presets.list(domain)
 
-    local root =
-        AppFS.system_presets()
+    local root = AppFS.system_presets()
+    local dir = helpers:join(root, domain)
+    local res = require("system.infrastructure.app_fs.result").new(dir)
 
-    local dir =
-        helpers:join(root, domain)
-
-    local res =
-        require("system.infrastructure.app_fs.result").new(dir)
-
-    local inspection =
-        res:inspect()
+    local inspection = res:inspect()
 
     if not inspection.exists() or not inspection.is_directory() then
         return {}
@@ -54,10 +48,7 @@ function Presets.list(domain)
     local names = {}
 
     for _, file in ipairs(res:files()) do
-
-        local name =
-            file:match("([^/]+)%.json$")
-
+        local name = file:match("([^/]+)%.json$")
         if name then
             names[#names + 1] = name
         end

@@ -29,7 +29,7 @@ function PricingProjector.materialize(target, service_result)
     for scoped_pos = 1, #boards do
 
         local original_index = index_map[scoped_pos] or scoped_pos
-        local row = per_board[original_index]
+        local row = per_board[scoped_pos]
         local board = boards[scoped_pos]
         if row and board then
 

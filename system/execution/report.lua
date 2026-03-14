@@ -29,36 +29,109 @@ function Reporter.begin(ctx, service_name)
 
     if service_name == "pricing" then
 
-        if ctx.env and ctx.env.vendors then
+        local vendors =
+            ctx.env and ctx.env.vendors or {}
 
-            local selector =
-                ctx.resolved
-                and ctx.resolved.vendors
+        local selector =
+            ctx.resolved and ctx.resolved.vendors
 
-            if selector
-            and selector.batch
-            and selector.batch ~= "all" then
+        ------------------------------------------------
+        -- vendor selection
+        ------------------------------------------------
 
-                log(depth, string.format(
-                    "[execution] vendor batch: %s",
-                    tostring(selector.batch)
-                ))
+        if selector and selector.batch and selector.batch ~= "all" then
 
-            else
+            log(depth, string.format(
+                "[execution] vendor batch: %s",
+                tostring(selector.batch)
+            ))
 
-                log(depth, string.format(
-                    "[execution] vendors: %d (all)",
-                    #ctx.env.vendors
-                ))
+        else
 
-            end
+            log(depth, string.format(
+                "[execution] vendors: %d (all)",
+                #vendors
+            ))
+
         end
 
+        ------------------------------------------------
+        -- vendor identity
+        ------------------------------------------------
+
+        for i, batch in ipairs(vendors) do
+
+            local vendor_id =
+                batch and batch.id or "?"
+
+            local board_count =
+                batch and batch.boards and #batch.boards or 0
+
+            log(depth, string.format(
+                "[execution] vendor[%d]: %s (%d boards)",
+                i,
+                tostring(vendor_id),
+                board_count
+            ))
+
+        end
+
+        ------------------------------------------------
+        -- job scope
+        ------------------------------------------------
+
+        local job_batch =
+            ctx.resolved
+            and ctx.resolved.job
+            and ctx.resolved.job.batch
+            or "?"
+
+        log(depth, string.format(
+            "[execution] job batch: %s",
+            tostring(job_batch)
+        ))
+
+        if ctx.target and ctx.target.board_indices then
+
+            log(depth, string.format(
+                "[execution] scoped boards: %d",
+                #ctx.target.board_indices
+            ))
+
+        end
+
+        ------------------------------------------------
+        -- strategy
+        ------------------------------------------------
+
         if ctx.strategy then
+
             log(depth, string.format(
                 "[execution] strategy: %s",
                 tostring(ctx.strategy)
             ))
+
+        end
+
+        ------------------------------------------------
+        -- strategy options
+        ------------------------------------------------
+
+        local opts =
+            ctx.env and ctx.env.opts or {}
+
+        for k, v in pairs(opts) do
+
+            if type(v) ~= "table" then
+
+                log(depth, string.format(
+                    "[execution] opt.%s = %s",
+                    tostring(k),
+                    tostring(v)
+                ))
+
+            end
+
         end
 
         return
@@ -87,6 +160,7 @@ function Reporter.begin(ctx, service_name)
         ))
 
     end
+
 end
 
 
@@ -103,13 +177,21 @@ function Reporter.finish(ctx)
 
 end
 
+
+------------------------------------------------
+-- Mutation Reporting
+------------------------------------------------
+
 function Reporter.mutation(ctx, capability)
 
     local depth =
         ctx.depth or 0
 
-    print(string.rep("  ", depth) ..
-        "[execution] mutation applied: " .. tostring(capability))
+    log(depth, string.format(
+        "[execution] mutation applied: %s",
+        tostring(capability)
+    ))
+
 end
 
 return Reporter
