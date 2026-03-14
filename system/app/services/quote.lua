@@ -27,37 +27,29 @@ end
 ---@return table
 function Quote:run(ctx)
 
-    local data =
-        self.__app:data()
+    ------------------------------------------------
+    -- Execution target required
+    ------------------------------------------------
 
-    local runtime =
-        data:runtime()
+    local target =
+        ctx and ctx.target
 
-    ------------------------------------------------------------
-    -- Resolve job batch
-    ------------------------------------------------------------
+    assert(type(target) == "table",
+        "[quote.service] execution target missing")
 
-    local job_batch
+    assert(type(target.batch) == "table",
+        "[quote.service] target batch missing")
 
-    if ctx and ctx.env and ctx.env.job then
-        job_batch = ctx.env.job:batch()
-    else
-        job_batch = runtime:require("user","job"):batch()
-    end
+    assert(type(target.boards) == "table",
+        "[quote.service] target boards missing")
 
-    assert(type(job_batch) == "table",
-        "[quote.service] job batch missing")
-
-    assert(type(job_batch.boards) == "table",
-        "[quote.service] job batch boards missing")
-
-    ------------------------------------------------------------
+    ------------------------------------------------
     -- Domain execution
-    ------------------------------------------------------------
+    ------------------------------------------------
 
     return QuoteDomain.run_strict(
-        job_batch.boards,
-        ctx and ctx.opts or {}
+        target.boards,
+        (ctx and ctx.env and ctx.env.opts) or {}
     )
 end
 

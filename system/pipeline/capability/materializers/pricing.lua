@@ -29,17 +29,8 @@ function PricingMaterializer.materialize(target, service_result, capability)
     local raw = model:raw()
 
     local per_board = raw.per_board or {}
-    local boards    = target.boards or {}
-
-    local board_count = #boards
-    local model_count = #per_board
-
-    assert(
-        model_count == board_count,
-        "[pricing.materializer] per_board row count mismatch: "
-        .. tostring(model_count) .. " vs "
-        .. tostring(board_count)
-    )
+    local scoped_boards = target.boards or {}
+    local index_map = target.board_indices or {}
 
     local patch = {
         capability = "board_prices",
@@ -48,10 +39,16 @@ function PricingMaterializer.materialize(target, service_result, capability)
         }
     }
 
-    for i = 1, board_count do
+    for scoped_pos = 1, #scoped_boards do
 
-        local row   = per_board[i]
-        local board = boards[i]
+        local original_index =
+            index_map[scoped_pos] or scoped_pos
+
+        local row =
+            per_board[original_index]
+
+        local board =
+            scoped_boards[scoped_pos]
 
         if row and board then
 
@@ -66,7 +63,7 @@ function PricingMaterializer.materialize(target, service_result, capability)
                 local lf_price    = f:bf_to_lf(bf_price)
                 local batch_price = f:ea_to_batch(ea_price)
 
-                patch.changes.boards[i] = {
+                patch.changes.boards[original_index] = {
                     bf_price    = bf_price,
                     ea_price    = ea_price,
                     lf_price    = lf_price,

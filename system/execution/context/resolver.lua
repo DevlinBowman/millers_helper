@@ -1,4 +1,4 @@
--- system/execution/target_resolver.lua
+-- system/execution/context/resolver.lua
 
 local Resolver = {}
 
@@ -16,8 +16,16 @@ local function normalize_selector(selector)
         return { batch = selector }
     end
 
+    if type(selector) == "string" then
+        return { resource = selector }
+    end
+
     if type(selector) == "table" then
-        return selector
+        return {
+            resource = selector.resource,
+            batch    = selector.batch,
+            board    = selector.board
+        }
     end
 
     error("[execution] invalid selector")
@@ -32,12 +40,10 @@ local function resolve_batch_index(batches, requested)
         return nil
     end
 
-    -- nil → first
     if requested == nil then
         return 1
     end
 
-    -- out of range → last
     if requested > count then
         return count
     end
@@ -47,19 +53,6 @@ local function resolve_batch_index(batches, requested)
     end
 
     return requested
-end
-
-
-local function wrap_batch(envelope, batch)
-
-    return setmetatable({},{
-        __index = function(_, k)
-            if k == "batch" then
-                return function() return batch end
-            end
-            return envelope[k]
-        end
-    })
 end
 
 
@@ -90,27 +83,68 @@ function Resolver.resolve_job(runtime, resource_selector, selection)
     assert(type(batch) == "table",
         "[execution] job batch resolution failed")
 
-    local env =
-        wrap_batch(base, batch)
+    ------------------------------------------------
+    -- scope resolution
+    ------------------------------------------------
 
-    ------------------------------------------------
-    -- optional board targeting
-    ------------------------------------------------
+    local boards =
+        batch.boards or {}
+
+    local board_indices = {}
 
     if selector.board then
 
-        local boards =
-            batch.boards or {}
-
-        local board =
-            boards[selector.board]
-
-        if board then
-            return env, { boards = { board } }, { batch = batch_index, board = selector.board }
+        if boards[selector.board] then
+            board_indices = { selector.board }
         end
+
+    else
+
+        for i = 1, #boards do
+            board_indices[#board_indices + 1] = i
+        end
+
     end
 
-    return env, batch, { batch = batch_index }
+    ------------------------------------------------
+    -- scoped board view
+    ------------------------------------------------
+
+    local scoped_boards = {}
+
+    for _, idx in ipairs(board_indices) do
+
+        local board =
+            boards[idx]
+
+        if board then
+            scoped_boards[#scoped_boards + 1] = board
+        end
+
+    end
+
+    ------------------------------------------------
+    -- target structure
+    ------------------------------------------------
+
+    local target = {
+
+        batch         = batch,
+        boards        = scoped_boards,
+        board_indices = board_indices,
+        all_boards    = boards
+
+    }
+
+    ------------------------------------------------
+    -- envelope passthrough
+    ------------------------------------------------
+
+    local env =
+        base
+
+    return env, target, { board_indices = board_indices }, { batch = batch_index }
+
 end
 
 
@@ -121,13 +155,24 @@ end
 function Resolver.resolve_vendors(runtime, selection)
 
     local batches =
-        runtime:batches("system","vendor")
+        runtime:batches("system", "vendor")
 
     assert(type(batches) == "table",
         "[execution] vendor batches required")
 
     local selector =
         normalize_selector(selection)
+
+    ------------------------------------------------
+    -- load vendor envelope (always required)
+    ------------------------------------------------
+
+    local vendor_env =
+        runtime:require("system", "vendor")
+
+    ------------------------------------------------
+    -- specific batch selection
+    ------------------------------------------------
 
     if selector.batch then
 
@@ -137,11 +182,19 @@ function Resolver.resolve_vendors(runtime, selection)
         local batch =
             batches[batch_index]
 
-        return nil, { batch }, { batch = batch_index }
+        if not batch then
+            return vendor_env, {}, { batch = nil }
+        end
+
+        return vendor_env, { batch }, { batch = batch_index }
+
     end
 
-    return nil, batches, { batch = "all" }
-end
+    ------------------------------------------------
+    -- default → all vendors
+    ------------------------------------------------
 
+    return vendor_env, batches, { batch = "all" }
+end
 
 return Resolver

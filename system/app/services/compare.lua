@@ -4,7 +4,7 @@ local CompareDomain = require("core.domain.compare").controller
 
 ---@class AppCompareService
 ---@field private __app Surface
-local Compare   = {}
+local Compare = {}
 Compare.__index = Compare
 
 ------------------------------------------------------------
@@ -27,59 +27,33 @@ end
 ---@return CompareResult
 function Compare:run(ctx)
 
-    local data =
-        self.__app:data()
+    local target =
+        ctx and ctx.target
 
-    local runtime =
-        data:runtime()
+    assert(type(target) == "table",
+        "[compare.service] execution target missing")
 
-    ------------------------------------------------
-    -- Resolve job batch
-    ------------------------------------------------
+    assert(type(target.batch) == "table",
+        "[compare.service] target batch missing")
 
-    local job_batch
-
-    if ctx and ctx.env and ctx.env.job then
-
-        job_batch =
-            ctx.env.job:batch()
-
-    else
-
-        job_batch =
-            runtime:require("user", "job"):batch()
-
-    end
-
-    assert(type(job_batch) == "table",
-        "[compare.service] job batch missing")
-
-    assert(type(job_batch.boards) == "table",
-        "[compare.service] job batch boards missing")
-
-    ------------------------------------------------
-    -- Resolve vendor batches (canonical runtime API)
-    ------------------------------------------------
+    assert(type(target.boards) == "table",
+        "[compare.service] target boards missing")
 
     local vendor_batches =
-        runtime:batches("system", "vendor")
+        ctx and ctx.env and ctx.env.vendors
 
     assert(type(vendor_batches) == "table",
         "[compare.service] vendor batches missing")
 
-    ------------------------------------------------
-    -- Options
-    ------------------------------------------------
-
     local opts =
-        ctx and ctx.opts or {}
+        (ctx and ctx.env and ctx.env.opts) or {}
 
     ------------------------------------------------
     -- Domain execution
     ------------------------------------------------
 
     return CompareDomain.run_strict(
-        job_batch,
+        target,
         vendor_batches,
         opts
     )

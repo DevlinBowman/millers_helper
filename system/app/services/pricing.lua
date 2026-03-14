@@ -20,43 +20,6 @@ function Pricing.new(app)
 end
 
 ------------------------------------------------------------
--- Internal: Normalize Runtime Selector
-------------------------------------------------------------
-
----@param selector any
----@return number|string|nil
-local function normalize_runtime_selector(selector)
-
-    if selector == nil then
-        return nil
-    end
-
-    local t = type(selector)
-
-    if t == "number" or t == "string" then
-        return selector
-    end
-
-    if t == "table" then
-
-        if selector.resource then
-            return selector.resource
-        end
-
-        if selector.batch then
-            return selector.batch
-        end
-
-        if selector.id then
-            return selector.id
-        end
-
-    end
-
-    return nil
-end
-
-------------------------------------------------------------
 -- Public Run
 ------------------------------------------------------------
 
@@ -64,111 +27,44 @@ end
 ---@return table
 function Pricing:run(ctx)
 
-    local data    = self.__app:data()
-    local runtime = data:runtime()
-    local slots   = data:slots()
-
     ------------------------------------------------
-    -- Resolve Job Envelope (resource level)
+    -- Execution Target
     ------------------------------------------------
 
-    local job_env
+    local target =
+        ctx and ctx.target
 
-    if ctx and ctx.env and ctx.env.job then
-        job_env = ctx.env.job
-    else
-        job_env = runtime:require("user","job")
-    end
+    assert(type(target) == "table",
+        "[pricing.service] execution target missing")
 
-    assert(type(job_env)=="table",
-        "[pricing.service] job envelope missing")
+    assert(type(target.batch) == "table",
+        "[pricing.service] target batch missing")
 
-    ------------------------------------------------
-    -- Resolve Job Batch (batch level)
-    ------------------------------------------------
+    assert(type(target.boards) == "table",
+        "[pricing.service] target boards missing")
 
-    local job_batch
-
-    local selector = slots:get_selection("user","job")
-
-    if type(selector) == "table" and selector.batch then
-
-        local batches = job_env.__batches or {}
-
-        local idx = selector.batch
-
-        if idx > #batches then
-            idx = #batches
-        elseif idx < 1 then
-            idx = 1
-        end
-
-        job_batch = batches[idx]
-
-    else
-
-        job_batch = job_env:batch()
-
-    end
-
-    assert(type(job_batch)=="table",
-        "[pricing.service] job batch missing")
+    local job_batch =
+        target.batch
 
     ------------------------------------------------
-    -- Resolve Vendor Batches
+    -- Vendor Batches
     ------------------------------------------------
 
-    local vendor_batches
+    local vendor_batches =
+        ctx and ctx.env and ctx.env.vendors
 
-    if ctx and ctx.env and ctx.env.vendors then
-
-        vendor_batches = ctx.env.vendors
-
-    else
-
-        local selector = slots:get_selection("system","vendor")
-
-        if type(selector) == "table" and selector.batch then
-
-            local env = runtime:require("system","vendor")
-            local batches = env.__batches or {}
-
-            local idx = selector.batch
-
-            if idx > #batches then
-                idx = #batches
-            elseif idx < 1 then
-                idx = 1
-            end
-
-            vendor_batches = { batches[idx] }
-
-        else
-
-            vendor_batches = runtime:batches("system","vendor")
-
-        end
-
-    end
+    assert(type(vendor_batches) == "table",
+        "[pricing.service] vendor batches missing")
 
     ------------------------------------------------
-    -- Resolve Strategy
+    -- Strategy
     ------------------------------------------------
 
-    local strategy
+    local strategy =
+        ctx and ctx.strategy
 
-    if ctx and ctx.strategy then
-
-        strategy = ctx.strategy
-
-    else
-
-        local intent =
-            data:intent():get("pricing") or {}
-
-        strategy =
-            intent.basis or "vendor_anchor"
-
+    if not strategy then
+        strategy = "vendor_anchor"
     end
 
     ------------------------------------------------
@@ -176,7 +72,7 @@ function Pricing:run(ctx)
     ------------------------------------------------
 
     local opts =
-        ctx and ctx.opts or {}
+        ctx and ctx.env and ctx.env.opts or {}
 
     ------------------------------------------------
     -- Domain Execution

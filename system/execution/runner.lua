@@ -1,87 +1,123 @@
 -- system/execution/runner.lua
 
-local Compatibility  = require("system.pipeline.compatibility.controller")
-local Enrichment     = require("system.pipeline.enrichment.controller")
 local Materializer   = require("system.pipeline.capability.materializer")
 local PatchValidator = require("system.pipeline.capability.patch_validator")
 local Mutator        = require("system.pipeline.runtime.mutator")
 
-local Runner         = {}
+local Runner = {}
+
+------------------------------------------------------------
+-- Service Loader
+------------------------------------------------------------
 
 local function load_service(app, service_name)
+
     local services = app:services()
+
     local ctor = services[service_name]
-    assert(type(ctor) == "function", "[execution] unknown service: " .. tostring(service_name))
+
+    assert(type(ctor) == "function",
+        "[execution] unknown service: " .. tostring(service_name))
+
     local service = ctor(services)
-    assert(type(service) == "table", "[execution] service instance required")
-    assert(type(service.run) == "function", "[execution] service.run() required")
+
+    assert(type(service) == "table",
+        "[execution] service instance required")
+
+    assert(type(service.run) == "function",
+        "[execution] service.run() required")
+
     return service
 end
 
-local function resolve_capability_list(missing, force)
-    local out, seen = {}, {}
-    for _, cap in ipairs(missing or {}) do
-        if not seen[cap] then
-            seen[cap] = true
-            out[#out + 1] = cap
-        end
-    end
-    if not force then return out end
 
-    local registry = require("system.pipeline.enrichment.providers")
-    for cap, _ in pairs(registry) do
-        if not seen[cap] then
-            seen[cap] = true
-            out[#out + 1] = cap
-        end
-    end
-    return out
-end
-
+------------------------------------------------------------
+-- Execution
+------------------------------------------------------------
 
 ---@param app Surface
 ---@param ctx table
 ---@return any
 function Runner.execute(app, ctx)
+
     ctx.depth = (ctx.depth or 0)
-    local indent = string.rep("  ", ctx.depth)
+
+    local indent =
+        string.rep("  ", ctx.depth)
 
     local function log(msg)
         print(indent .. msg)
     end
 
-    local plan = ctx.plan or { ctx.service }
+    local plan =
+        ctx.plan or { ctx.service }
 
     local final_result
 
     for _, service_name in ipairs(plan) do
+
         log("[execution] BEGIN")
-        log(string.format("[execution] service:  %s", tostring(service_name)))
+        log(string.format(
+            "[execution] service:  %s",
+            tostring(service_name)
+        ))
 
         ------------------------------------------------
-        -- Context info
+        -- Context logging
         ------------------------------------------------
 
         if service_name ~= "pricing" then
-            local resource = ctx.job_resource_selector or 1
-            local batch    = (ctx.job_resolved_selector and ctx.job_resolved_selector.batch) or "?"
+
+            local batch =
+                (ctx.resolved
+                and ctx.resolved.job
+                and ctx.resolved.job.batch)
+                or "?"
 
             log(string.format(
-                "[execution] target:   job[%s] -> batch[%s]",
-                tostring(resource),
+                "[execution] target:   job -> batch[%s]",
                 tostring(batch)
             ))
 
             if ctx.target and ctx.target.boards then
-                log(string.format("[execution] boards:   %d", #ctx.target.boards))
+                log(string.format(
+                    "[execution] boards:   %d",
+                    #ctx.target.boards
+                ))
             end
+
         else
+
             if ctx.env and ctx.env.vendors then
-                log(string.format("[execution] vendors:  %d", #ctx.env.vendors))
+
+                local selector =
+                    ctx.resolved
+                    and ctx.resolved.vendors
+
+                if selector
+                and selector.batch
+                and selector.batch ~= "all" then
+
+                    log(string.format(
+                        "[execution] vendor batch: %s",
+                        tostring(selector.batch)
+                    ))
+
+                else
+
+                    log(string.format(
+                        "[execution] vendors: %d (all)",
+                        #ctx.env.vendors
+                    ))
+
+                end
             end
 
             if ctx.strategy then
-                log(string.format("[execution] strategy: %s", tostring(ctx.strategy)))
+                log(string.format(
+                    "[execution] strategy: %s",
+                    tostring(ctx.strategy)
+                ))
             end
         end
 
@@ -89,19 +125,22 @@ function Runner.execute(app, ctx)
         -- Load service
         ------------------------------------------------
 
-        local service = load_service(app, service_name)
+        local service =
+            load_service(app, service_name)
 
-        -- update execution context for this step
-        ctx.service   = service_name
-        ctx.status    = "running"
+        ctx.service = service_name
+        ctx.status  = "running"
 
-        local result  = service:run(ctx)
+        local result =
+            service:run(ctx)
 
         ------------------------------------------------
         -- Capability materialization
         ------------------------------------------------
 
-        if service_name == "pricing" and type(result) == "table" then
+        if service_name == "pricing"
+        and type(result) == "table" then
+
             local patch =
                 Materializer.materialize(
                     "board_prices",
@@ -114,9 +153,16 @@ function Runner.execute(app, ctx)
                 )
 
             if patch then
+
                 PatchValidator.validate_patch(patch)
-                Mutator.apply(ctx.target, { patch })
+
+                Mutator.apply(
+                    ctx.target.batch,
+                    { patch }
+                )
+
                 log("[execution] pricing mutation applied")
+
             end
         end
 

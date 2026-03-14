@@ -33,20 +33,30 @@ end
 
 local function normalize_selection(value)
 
+    if value == nil then
+        return {}
+    end
+
     if type(value) == "number" then
-        return { batch = value }
+        return {
+            batch = value
+        }
     end
 
     if type(value) == "string" then
-        return { id = value }
+        return {
+            resource = value
+        }
     end
 
     if type(value) == "table" then
+
         return {
-            batch = value.batch,
-            board = value.board,
-            id    = value.id
+            resource = value.resource or value.id,
+            batch    = value.batch,
+            board    = value.board
         }
+
     end
 
     error("[slots] invalid selection value")
@@ -112,13 +122,7 @@ function Slots:get_selection(scope, role)
         return nil
     end
 
-    if type(value) == "number"
-        or type(value) == "string"
-    then
-        return normalize_selection(value)
-    end
-
-    return value
+    return normalize_selection(value)
 end
 
 ------------------------------------------------------------
@@ -151,6 +155,22 @@ end
 ---@return any
 function Slots:get_config(key)
     return self.__state.slots.config[key]
+end
+
+function Slots:resolve(scope, role)
+
+    local sel =
+        self:get_selection(scope, role)
+
+    if not sel then
+        return {}
+    end
+
+    return {
+        resource = sel.resource,
+        batch    = sel.batch,
+        board    = sel.board
+    }
 end
 
 return Slots
