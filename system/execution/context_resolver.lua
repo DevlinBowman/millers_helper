@@ -1,13 +1,17 @@
--- system/execution/context/resolver.lua
+-- system/execution/context_resolver.lua
 
 local Resolver = {}
 
 ------------------------------------------------------------
--- helpers
+-- Helpers
 ------------------------------------------------------------
 
-local function resolve_batch_index(batches, requested)
+local function assert_selector_table(selector, label)
+    assert(selector == nil or type(selector) == "table",
+        string.format("[execution.resolver] %s selector must be table", label))
+end
 
+local function resolve_batch_index(batches, requested, label)
     local count = #batches
 
     if count == 0 then
@@ -18,22 +22,65 @@ local function resolve_batch_index(batches, requested)
         return 1
     end
 
-    if requested > count then
-        return count
-    end
+    assert(type(requested) == "number" and requested >= 1 and requested % 1 == 0,
+        string.format("[execution.resolver] %s batch selector must be integer >= 1", label))
 
-    if requested < 1 then
-        return 1
-    end
+    assert(requested <= count,
+        string.format(
+            "[execution.resolver] %s batch selector out of range: %d > %d",
+            label,
+            requested,
+            count
+        ))
 
     return requested
 end
 
+local function build_board_scope(boards, board_index)
+    local board_indices = {}
+    local scoped_boards = {}
+
+    if board_index ~= nil then
+        assert(type(board_index) == "number" and board_index >= 1 and board_index % 1 == 0,
+            "[execution.resolver] board selector must be integer >= 1")
+
+        assert(boards[board_index] ~= nil,
+            string.format("[execution.resolver] board selector out of range: %d", board_index))
+
+        board_indices[1] = board_index
+        scoped_boards[1] = boards[board_index]
+
+        return scoped_boards, board_indices
+    end
+
+    for i = 1, #boards do
+        board_indices[#board_indices + 1] = i
+        scoped_boards[#scoped_boards + 1] = boards[i]
+    end
+
+    return scoped_boards, board_indices
+end
+
+local function require_batches(envelope, label)
+    assert(type(envelope) == "table",
+        string.format("[execution.resolver] %s envelope required", label))
+
+    local batches = envelope.__batches
+
+    assert(type(batches) == "table",
+        string.format("[execution.resolver] %s batches missing", label))
+
+    return batches
+end
+
 ------------------------------------------------------------
--- resolve
+-- Resolve
 ------------------------------------------------------------
 
-function Resolver.resolve(app, service, opts)
+function Resolver.resolve(app, service_name, opts)
+    assert(app ~= nil, "[execution.resolver] app required")
+    assert(type(service_name) == "string" and service_name ~= "",
+        "[execution.resolver] service_name required")
 
     opts = opts or {}
 
@@ -41,117 +88,63 @@ function Resolver.resolve(app, service, opts)
     local runtime = data:runtime()
     local slots   = data:slots()
 
-    ------------------------------------------------
-    -- job selector
-    ------------------------------------------------
-
     local job_sel =
         opts.job_selector
-        or slots:get_selection("user", "job:" .. service)
+        or slots:get_selection("user", "job:" .. service_name)
         or slots:get_selection("user", "job")
         or {}
 
-    ------------------------------------------------
-    -- vendor selector
-    ------------------------------------------------
-
     local vendor_sel =
         opts.vendor_selector
-        or slots:get_selection("system", "vendor:" .. service)
+        or slots:get_selection("system", "vendor:" .. service_name)
         or slots:get_selection("system", "vendor")
         or {}
 
+    assert_selector_table(job_sel, "job")
+    assert_selector_table(vendor_sel, "vendor")
+
     ------------------------------------------------
-    -- job envelope
+    -- Job envelope / batch
     ------------------------------------------------
 
-    local job_env =
-        runtime:require("user", "job")
+    local job_env     = runtime:require("user", "job")
+    local job_batches = require_batches(job_env, "job")
 
-    local job_batches =
-        job_env.__batches
-
-    assert(type(job_batches) == "table",
-        "[execution] job batches missing")
-
-    local job_batch_index =
-        resolve_batch_index(job_batches, job_sel.batch)
-
-    local job_batch =
-        job_batches[job_batch_index]
+    local job_batch_index = resolve_batch_index(job_batches, job_sel.batch, "job")
+    local job_batch       = job_batches[job_batch_index]
 
     assert(type(job_batch) == "table",
-        "[execution] job batch resolution failed")
+        "[execution.resolver] job batch resolution failed")
+
+    local boards = job_batch.boards or {}
+    assert(type(boards) == "table",
+        "[execution.resolver] job batch boards must be table")
+
+    local scoped_boards, board_indices =
+        build_board_scope(boards, job_sel.board)
 
     ------------------------------------------------
-    -- board scope
+    -- Vendor envelope / batches
     ------------------------------------------------
 
-    local boards =
-        job_batch.boards or {}
-
-    local board_indices = {}
-
-    if job_sel.board then
-
-        if boards[job_sel.board] then
-            board_indices = { job_sel.board }
-        end
-
-    else
-
-        for i = 1, #boards do
-            board_indices[#board_indices + 1] = i
-        end
-
-    end
-
-    local scoped_boards = {}
-
-    for _, idx in ipairs(board_indices) do
-
-        local board =
-            boards[idx]
-
-        if board then
-            scoped_boards[#scoped_boards + 1] = board
-        end
-
-    end
-
-    ------------------------------------------------
-    -- vendor envelope
-    ------------------------------------------------
-
-    local vendor_env =
-        runtime:require("system", "vendor")
-
-    local vendor_batches =
-        runtime:batches("system", "vendor")
+    local vendor_env     = runtime:require("system", "vendor")
+    local vendor_batches = runtime:batches("system", "vendor")
 
     assert(type(vendor_batches) == "table",
-        "[execution] vendor batches required")
+        "[execution.resolver] vendor batches required")
 
-    ------------------------------------------------
-    -- vendor batch selection
-    ------------------------------------------------
-
-    if vendor_sel.batch then
-
+    if vendor_sel.batch ~= nil then
         local vendor_index =
-            resolve_batch_index(vendor_batches, vendor_sel.batch)
+            resolve_batch_index(vendor_batches, vendor_sel.batch, "vendor")
 
-        vendor_batches =
-            { vendor_batches[vendor_index] }
-
+        vendor_batches = { vendor_batches[vendor_index] }
     end
 
     ------------------------------------------------
-    -- return context
+    -- Return context
     ------------------------------------------------
 
     return {
-
         job_env    = job_env,
         vendor_env = vendor_env,
 
@@ -159,18 +152,20 @@ function Resolver.resolve(app, service, opts)
             batch         = job_batch,
             boards        = scoped_boards,
             board_indices = board_indices,
-            all_boards    = boards
+            all_boards    = boards,
         },
 
         vendor_batches = vendor_batches,
 
         resolved = {
             job = {
-                batch = job_batch_index
+                batch = job_batch_index,
+                board = job_sel.board or "all",
             },
 
             vendors = {
-                batch = vendor_sel.batch or "all"
+                batch = vendor_sel.batch or "all",
+                count = #vendor_batches,
             }
         }
     }

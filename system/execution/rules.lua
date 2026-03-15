@@ -3,22 +3,34 @@ local Capabilities = require("system.execution.capabilities")
 local Rules = {}
 
 ------------------------------------------------------------
+-- Helpers
+------------------------------------------------------------
+
+local function is_force(ctx)
+    return ctx.opts and ctx.opts.force == true
+end
+
+local function pricing_ready(ctx)
+    return Capabilities.batch_pricing_ready(ctx.target)
+end
+
+local function pricing_intent(ctx)
+    return ctx.intent
+       and ctx.intent.get
+       and ctx.intent:get("pricing")
+end
+
+------------------------------------------------------------
 -- Pricing Rule
 ------------------------------------------------------------
 
 function Rules.pricing(ctx)
 
-    local force =
-        ctx.opts and ctx.opts.force == true
-
-    local pricing_ready =
-        Capabilities.batch_pricing_ready(ctx.target)
-
-    if force then
+    if is_force(ctx) then
         return { "pricing" }
     end
 
-    if not pricing_ready then
+    if not pricing_ready(ctx) then
         return { "pricing" }
     end
 
@@ -31,20 +43,11 @@ end
 
 function Rules.quote(ctx)
 
-    local force =
-        ctx.opts and ctx.opts.force == true
-
-    local pricing_ready =
-        Capabilities.batch_pricing_ready(ctx.target)
-
-    local pricing_intent =
-        ctx.intent and ctx.intent.get and ctx.intent:get("pricing")
-
-    if force then
+    if is_force(ctx) then
         return { "pricing", "quote" }
     end
 
-    if not pricing_ready and pricing_intent then
+    if not pricing_ready(ctx) and pricing_intent(ctx) then
         return { "pricing", "quote" }
     end
 
@@ -57,20 +60,11 @@ end
 
 function Rules.compare(ctx)
 
-    local force =
-        ctx.opts and ctx.opts.force == true
-
-    local pricing_ready =
-        Capabilities.batch_pricing_ready(ctx.target)
-
-    local pricing_intent =
-        ctx.intent and ctx.intent.get and ctx.intent:get("pricing")
-
-    if force then
+    if is_force(ctx) then
         return { "pricing", "compare" }
     end
 
-    if not pricing_ready and pricing_intent then
+    if not pricing_ready(ctx) and pricing_intent(ctx) then
         return { "pricing", "compare" }
     end
 
