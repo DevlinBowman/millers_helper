@@ -1,6 +1,5 @@
 -- system/app/state/resources.lua
 
-local Runtime = require("core.domain.runtime").controller
 local Schema = require("system.app.state.resource_schema")
 
 ---@class AppDataResources
@@ -10,13 +9,13 @@ local Schema = require("system.app.state.resource_schema")
 local Resources = {}
 Resources.__index = Resources
 
-----------------------------------------------------------------
+------------------------------------------------------------
 -- Constructor
-----------------------------------------------------------------
+------------------------------------------------------------
 
 ---@param app Surface
 ---@param resources_state table
----@param read_inputs fun():table|nil
+---@param read_inputs fun():table
 ---@return AppDataResources
 function Resources.new(app, resources_state, read_inputs)
 
@@ -34,64 +33,45 @@ function Resources.new(app, resources_state, read_inputs)
     }, Resources)
 end
 
-
-----------------------------------------------------------------
+------------------------------------------------------------
 -- Accessors
-----------------------------------------------------------------
+------------------------------------------------------------
 
 function Resources:user()
     return self.__resources.user
 end
 
-
 function Resources:system()
     return self.__resources.system
 end
 
+------------------------------------------------------------
+-- Descriptor Registration
+------------------------------------------------------------
 
-----------------------------------------------------------------
--- Runtime Loader Entry
-----------------------------------------------------------------
+---@param scope "system"|"user"
+---@param role string
+---@param descriptor table
+---@return table
+function Resources:add(scope, role, descriptor)
 
----@param entry table
----@return RuntimeResult
-function Resources:load_entry(entry)
+    Schema.assert_scope(scope)
+    Schema.assert_role(role)
 
-    assert(type(entry) == "table", "[resources] entry required")
-    assert(type(entry.load_spec) == "table", "[resources] load_spec missing")
+    assert(type(descriptor) == "table",
+        "[resources] descriptor table required")
 
-    local spec = entry.load_spec
+    local bucket = self.__resources[scope]
 
-    if spec.type == "single" then
+    bucket[role] = bucket[role] or {}
+    table.insert(bucket[role], descriptor)
 
-        assert(type(spec.path) == "string",
-            "[resources] single spec.path required")
-
-        return Runtime.load_strict(spec.path)
-
-    elseif spec.type == "associate" then
-
-        assert(type(spec.order_path)  == "string",
-            "[resources] associate order_path required")
-
-        assert(type(spec.boards_path) == "string",
-            "[resources] associate boards_path required")
-
-        local order_rt = Runtime.load_strict(spec.order_path)
-        local board_rt = Runtime.load_strict(spec.boards_path)
-
-        return Runtime.associate(order_rt, board_rt)
-
-    else
-        error("[resources] unknown load_spec type: "
-            .. tostring(spec.type), 2)
-    end
+    return descriptor
 end
 
-
-----------------------------------------------------------------
+------------------------------------------------------------
 -- Internal Helpers
-----------------------------------------------------------------
+------------------------------------------------------------
 
 ---@private
 ---@param role string
@@ -109,7 +89,6 @@ local function build_single_descriptor(role, path, id)
         }
     }
 end
-
 
 ---@private
 ---@param role string
@@ -136,186 +115,157 @@ local function scan_directory(role, root, id_pattern)
             id = path:match("([^/]+)$")
         end
 
-        if id then
-            table.insert(out,
-                build_single_descriptor(role, path, id))
-        end
+        table.insert(out, build_single_descriptor(role, path, id))
     end
 
     return out
 end
 
-
-----------------------------------------------------------------
--- System Store Scan (DESCRIPTORS ONLY)
-----------------------------------------------------------------
-
+---@private
+---@param role string
+---@param input_descriptor table
 ---@return table
----@return table
+function Resources:_build_input_descriptor(role, input_descriptor)
+
+    assert(type(role) == "string" and role ~= "",
+        "[resources] role required")
+
+    assert(type(input_descriptor) == "table",
+        "[resources] input_descriptor required")
+
+    if role == "job" then
+
+        if input_descriptor.path then
+            return {
+                kind = "job",
+                load_spec = {
+                    type = "single",
+                    path = input_descriptor.path
+                }
+            }
+        end
+
+        return {
+            kind = "job",
+            load_spec = {
+                type        = "associate",
+                order_path  = input_descriptor.order_path,
+                boards_path = input_descriptor.boards_path
+            }
+        }
+    end
+
+    if role == "vendor" then
+        return {
+            id   = input_descriptor.name,
+            kind = "vendor",
+            load_spec = {
+                type = "single",
+                path = input_descriptor.path
+            }
+        }
+    end
+
+    if role == "client" then
+        return {
+            kind = "client",
+            load_spec = {
+                type = "single",
+                path = input_descriptor.path
+            }
+        }
+    end
+
+    if role == "ledger" then
+        return {
+            kind = "ledger",
+            load_spec = {
+                type = "single",
+                path = input_descriptor.path
+            }
+        }
+    end
+
+    error("[resources] unsupported input role: " .. tostring(role), 2)
+end
+
+------------------------------------------------------------
+-- System Descriptor Registration
+------------------------------------------------------------
+
 ---@return table
 function Resources:pull_system()
 
-    local store = self.__app:fs():store()
+    local store =
+        self.__app:fs():store()
 
-    local system_resources = {
+    local system =
+        self.__resources.system
 
-        vendor =
-            scan_directory(
-                "vendor",
-                store:vendor(),
-                "([^/]+)%.csv$"
-            ),
+    system.vendor =
+        scan_directory(
+            "vendor",
+            store:vendor(),
+            "([^/]+)%.csv$"
+        )
 
-        ledger =
-            scan_directory(
-                "ledger",
-                store:ledger()
-            ),
+    system.ledger =
+        scan_directory(
+            "ledger",
+            store:ledger()
+        )
 
-        client =
-            scan_directory(
-                "client",
-                store:client()
-            ),
-    }
-
-    self.__resources.system = system_resources
+    system.client =
+        scan_directory(
+            "client",
+            store:client()
+        )
 
     return {
         status = "system resources registered"
     }
 end
 
+------------------------------------------------------------
+-- User Inputs → Resource Descriptors
+------------------------------------------------------------
 
-----------------------------------------------------------------
--- User Inputs → Canonical Resource Descriptors
-----------------------------------------------------------------
+---@param role string
+---@param input_descriptor table
+---@return table
+function Resources:register_input(role, input_descriptor)
+
+    local descriptor =
+        self:_build_input_descriptor(role, input_descriptor)
+
+    return self:add("user", role, descriptor)
+end
 
 ---@return table
 function Resources:pull_user_from_inputs()
 
-    local inputs = self.__read_inputs() or {}
-    local user_resources = {}
+    local inputs =
+        self.__read_inputs() or {}
 
-    local function ensure_role(role)
+    self.__resources.user = {}
 
-        if not user_resources[role] then
-            user_resources[role] = {}
-        end
+    for role, input_descriptor in pairs(inputs) do
 
-        return user_resources[role]
-    end
-
-
-    for role, descriptor in pairs(inputs) do
-
-        assert(type(descriptor) == "table",
+        assert(type(input_descriptor) == "table",
             "[resources] invalid input descriptor for role: "
             .. tostring(role))
 
-        --------------------------------------------------------
-        -- Job
-        --------------------------------------------------------
-
-        if role == "job" then
-
-            if descriptor.path then
-
-                table.insert(
-                    ensure_role("job"),
-                    {
-                        kind = "job",
-                        load_spec = {
-                            type = "single",
-                            path = descriptor.path
-                        }
-                    }
-                )
-
-            else
-
-                table.insert(
-                    ensure_role("job"),
-                    {
-                        kind = "job",
-                        load_spec = {
-                            type        = "associate",
-                            order_path  = descriptor.order_path,
-                            boards_path = descriptor.boards_path
-                        }
-                    }
-                )
-
-            end
-
-
-        --------------------------------------------------------
-        -- Vendor
-        --------------------------------------------------------
-
-        elseif role == "vendor" then
-
-            table.insert(
-                ensure_role("vendor"),
-                {
-                    id   = descriptor.name,
-                    kind = "vendor",
-                    load_spec = {
-                        type = "single",
-                        path = descriptor.path
-                    }
-                }
-            )
-
-
-        --------------------------------------------------------
-        -- Client
-        --------------------------------------------------------
-
-        elseif role == "client" then
-
-            table.insert(
-                ensure_role("client"),
-                {
-                    kind = "client",
-                    load_spec = {
-                        type = "single",
-                        path = descriptor.path
-                    }
-                }
-            )
-
-
-        --------------------------------------------------------
-        -- Ledger
-        --------------------------------------------------------
-
-        elseif role == "ledger" then
-
-            table.insert(
-                ensure_role("ledger"),
-                {
-                    kind = "ledger",
-                    load_spec = {
-                        type = "single",
-                        path = descriptor.path
-                    }
-                }
-            )
-        end
+        self:register_input(role, input_descriptor)
     end
-
-    self.__resources.user = user_resources
 
     return {
         status = "user resources registered"
     }
 end
 
-
-----------------------------------------------------------------
--- Canonical Get API
-----------------------------------------------------------------
+------------------------------------------------------------
+-- Descriptor Access
+------------------------------------------------------------
 
 ---@param scope "system"|"user"
 ---@param role string
@@ -323,19 +273,20 @@ end
 ---@return table|nil
 function Resources:get(scope, role, identifier)
 
-    assert(scope == "system" or scope == "user",
-        "[resources] invalid scope")
+    Schema.assert_scope(scope)
 
     assert(type(role) == "string" and role ~= "",
         "[resources] role required")
 
-    local bucket = self.__resources[scope]
+    local bucket =
+        self.__resources[scope]
 
     if type(bucket) ~= "table" then
         return nil
     end
 
-    local list = bucket[role]
+    local list =
+        bucket[role]
 
     if type(list) ~= "table" then
         return nil
@@ -354,10 +305,9 @@ function Resources:get(scope, role, identifier)
     return nil
 end
 
-
-----------------------------------------------------------------
--- Strict Single Descriptor Helper
-----------------------------------------------------------------
+------------------------------------------------------------
+-- Strict Single Descriptor
+------------------------------------------------------------
 
 ---@param scope ResourceScope
 ---@param role ResourceRole
@@ -368,14 +318,14 @@ function Resources:get_one(scope, role, field)
     Schema.assert_scope(scope)
     Schema.assert_role(role)
 
-    local list = self:get(scope, role)
+    local list =
+        self:get(scope, role)
 
     assert(type(list) == "table",
         "[resources] no descriptors for "
         .. scope .. "." .. role)
 
     if #list ~= 1 then
-
         error(
             "[resources] expected exactly 1 descriptor for "
             .. scope .. "." .. role
@@ -391,18 +341,15 @@ function Resources:get_one(scope, role, field)
         return descriptor
     end
 
-    assert(type(field) == "string" and field ~= "",
-        "[resources] field must be string")
-
-    local location = Schema.assert_field(role, field)
+    local location =
+        Schema.assert_field(role, field)
 
     if location == "direct" then
         return descriptor[field]
-
-    elseif location == "load_spec" then
-        return descriptor.load_spec
-            and descriptor.load_spec[field]
     end
+
+    return descriptor.load_spec
+        and descriptor.load_spec[field]
 end
 
 return Resources

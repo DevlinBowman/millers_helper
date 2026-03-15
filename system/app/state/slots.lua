@@ -1,7 +1,7 @@
 -- system/app/state/slots.lua
 
 ---@class AppDataSlots
----@field private __state table
+---@field private __slots table
 local Slots = {}
 Slots.__index = Slots
 
@@ -9,21 +9,21 @@ Slots.__index = Slots
 -- Constructor
 ------------------------------------------------------------
 
----@param state table
+---@param slots_state table
 ---@return AppDataSlots
-function Slots.new(state)
+function Slots.new(slots_state)
 
-    state.slots = state.slots or {}
+    assert(type(slots_state) == "table", "[slots] slots_state required")
 
-    state.slots.selection = state.slots.selection or {
+    slots_state.selection = slots_state.selection or {
         user   = {},
         system = {},
     }
 
-    state.slots.config = state.slots.config or {}
+    slots_state.config = slots_state.config or {}
 
     return setmetatable({
-        __state = state
+        __slots = slots_state
     }, Slots)
 end
 
@@ -50,13 +50,11 @@ local function normalize_selection(value)
     end
 
     if type(value) == "table" then
-
         return {
             resource = value.resource or value.id,
             batch    = value.batch,
             board    = value.board
         }
-
     end
 
     error("[slots] invalid selection value")
@@ -80,7 +78,7 @@ function Slots:set_selection(scope, role, value)
     local selection =
         normalize_selection(value)
 
-    self.__state.slots.selection[scope][role] =
+    self.__slots.selection[scope][role] =
         selection
 end
 
@@ -116,7 +114,7 @@ end
 function Slots:get_selection(scope, role)
 
     local value =
-        self.__state.slots.selection[scope][role]
+        self.__slots.selection[scope][role]
 
     if value == nil then
         return nil
@@ -133,7 +131,7 @@ end
 ---@param role string
 function Slots:clear_selection(scope, role)
 
-    self.__state.slots.selection[scope][role] =
+    self.__slots.selection[scope][role] =
         nil
 end
 
@@ -148,14 +146,18 @@ function Slots:set_config(key, value)
     assert(type(key) == "string" and key ~= "",
         "[slots] config key required")
 
-    self.__state.slots.config[key] = value
+    self.__slots.config[key] = value
 end
 
 ---@param key string
 ---@return any
 function Slots:get_config(key)
-    return self.__state.slots.config[key]
+    return self.__slots.config[key]
 end
+
+------------------------------------------------------------
+-- Resolver
+------------------------------------------------------------
 
 function Slots:resolve(scope, role)
 

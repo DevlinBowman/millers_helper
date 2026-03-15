@@ -32,7 +32,7 @@ function Backend.run(instance_name)
 
     local surface = Surface.new(instance_name)
     -- Register system resource descriptors
-    surface:data():resources():pull_system()
+    -- surface:data():resources():pull_system()
     -- Load intent presets
     surface:data():intent():pull_all()
 

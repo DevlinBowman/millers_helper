@@ -1,14 +1,23 @@
 ---@class AppDataContext
----@field private __state table
+---@field private __ctx table
 local Context = {}
 Context.__index = Context
 
-function Context.new(state)
+------------------------------------------------------------
+-- Constructor
+------------------------------------------------------------
 
-    state.ctx = state.ctx or { active = nil, store = {} }
+---@param ctx_state table
+---@return AppDataContext
+function Context.new(ctx_state)
+
+    assert(type(ctx_state) == "table", "[data.context] ctx_state required")
+
+    ctx_state.active = ctx_state.active or nil
+    ctx_state.store  = ctx_state.store  or {}
 
     return setmetatable({
-        __state = state
+        __ctx = ctx_state
     }, Context)
 end
 
@@ -21,10 +30,10 @@ function Context:create(id, data)
     assert(type(id) == "string" and id ~= "",
         "[data.context] id required")
 
-    self.__state.ctx.store[id] = data or {}
-    self.__state.ctx.active = id
+    self.__ctx.store[id] = data or {}
+    self.__ctx.active = id
 
-    return self.__state.ctx.store[id]
+    return self.__ctx.store[id]
 end
 
 ------------------------------------------------------------
@@ -33,10 +42,12 @@ end
 
 function Context:get(id)
 
-    id = id or self.__state.ctx.active
-    if not id then return nil end
+    id = id or self.__ctx.active
+    if not id then
+        return nil
+    end
 
-    return self.__state.ctx.store[id]
+    return self.__ctx.store[id]
 end
 
 ------------------------------------------------------------
@@ -45,13 +56,15 @@ end
 
 function Context:clear(id)
 
-    id = id or self.__state.ctx.active
-    if not id then return end
+    id = id or self.__ctx.active
+    if not id then
+        return
+    end
 
-    self.__state.ctx.store[id] = nil
+    self.__ctx.store[id] = nil
 
-    if self.__state.ctx.active == id then
-        self.__state.ctx.active = nil
+    if self.__ctx.active == id then
+        self.__ctx.active = nil
     end
 end
 
@@ -60,7 +73,7 @@ end
 ------------------------------------------------------------
 
 function Context:list()
-    return self.__state.ctx.store
+    return self.__ctx.store
 end
 
 return Context

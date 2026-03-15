@@ -1,5 +1,5 @@
 ---@class AppDataInput
----@field private __state table
+---@field private __inputs table
 local Input = {}
 Input.__index = Input
 
@@ -24,6 +24,7 @@ local ROLE_SCHEMA = {
         -- single-file job
         if payload.path then
             assert(type(payload.path) == "string", "[data.input] job.path must be string")
+
             return {
                 path = payload.path
             }
@@ -33,8 +34,9 @@ local ROLE_SCHEMA = {
         if payload.order_path and payload.boards_path then
             assert(type(payload.order_path) == "string", "[data.input] order_path must be string")
             assert(type(payload.boards_path) == "string", "[data.input] boards_path must be string")
+
             return {
-                order_path = payload.order_path,
+                order_path  = payload.order_path,
                 boards_path = payload.boards_path
             }
         end
@@ -49,7 +51,7 @@ local ROLE_SCHEMA = {
 
         return {
             path = payload.path,
-            name = payload.name,
+            name = payload.name
         }
     end,
 
@@ -76,20 +78,17 @@ local ROLE_SCHEMA = {
 -- Constructor
 ----------------------------------------------------------------
 
----@param state table
+---@param inputs_state table
 ---@return AppDataInput
-function Input.new(state)
-    assert(type(state) == "table", "[data.input] state required")
+function Input.new(inputs_state)
 
-    state.inputs = state.inputs or {}
-    state.inputs.by_role = state.inputs.by_role or {}
+    assert(type(inputs_state) == "table", "[data.input] inputs_state required")
 
-    ---@type AppDataInput
-    local instance = setmetatable({
-        __state = state
+    inputs_state.by_role = inputs_state.by_role or {}
+
+    return setmetatable({
+        __inputs = inputs_state
     }, Input)
-
-    return instance
 end
 
 ----------------------------------------------------------------
@@ -102,45 +101,55 @@ end
 ---@param payload table
 ---@return table descriptor
 function Input:set(role, payload)
+
     assert(type(role) == "string" and role ~= "",
         "[data.input] role required")
 
     local validator = ROLE_SCHEMA[role]
+
     assert(validator,
         "[data.input] invalid role: " .. tostring(role))
 
     local descriptor = validator(payload)
 
-    self.__state.inputs.by_role[role] = descriptor
+    self.__inputs.by_role[role] = descriptor
 
     return descriptor
 end
 
----Get descriptor for a role.
+----------------------------------------------------------------
+
 ---@param role string
 ---@return table|nil
 function Input:get(role)
+
     assert(type(role) == "string" and role ~= "",
         "[data.input] role required")
 
-    return self.__state.inputs.by_role[role]
+    return self.__inputs.by_role[role]
 end
 
----Return entire input map (by_role).
+----------------------------------------------------------------
+
 ---@return table
 function Input:all()
-    return self.__state.inputs.by_role
+    return self.__inputs.by_role
 end
 
----Clear one role or all roles.
+----------------------------------------------------------------
+
 ---@param role string|nil
 function Input:clear(role)
+
     if role then
+
         assert(type(role) == "string",
             "[data.input] role must be string")
-        self.__state.inputs.by_role[role] = nil
+
+        self.__inputs.by_role[role] = nil
+
     else
-        self.__state.inputs.by_role = {}
+        self.__inputs.by_role = {}
     end
 end
 

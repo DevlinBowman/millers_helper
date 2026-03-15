@@ -3,7 +3,7 @@
 local Presets = require("system.infrastructure.app_fs.presets")
 
 ---@class AppDataIntent
----@field private __state table
+---@field private __intent table
 local Intent = {}
 Intent.__index = Intent
 
@@ -11,16 +11,14 @@ Intent.__index = Intent
 -- Constructor
 ------------------------------------------------------------
 
----@param state table
+---@param intent_state table
 ---@return AppDataIntent
-function Intent.new(state)
+function Intent.new(intent_state)
 
-    assert(type(state) == "table", "[data.intent] state required")
-
-    state.intent = state.intent or {}
+    assert(type(intent_state) == "table", "[data.intent] intent_state required")
 
     return setmetatable({
-        __state = state
+        __intent = intent_state
     }, Intent)
 end
 
@@ -31,38 +29,53 @@ end
 ---@param key string
 ---@param value any
 function Intent:set(key, value)
+
     assert(type(key) == "string" and key ~= "",
         "[data.intent] key required")
 
-    self.__state.intent[key] = value
+    self.__intent[key] = value
 end
+
+------------------------------------------------------------
 
 ---@param key string
 ---@return any
 function Intent:get(key)
+
     assert(type(key) == "string" and key ~= "",
         "[data.intent] key required")
 
-    return self.__state.intent[key]
+    return self.__intent[key]
 end
+
+------------------------------------------------------------
 
 ---@return table
 function Intent:all()
-    return self.__state.intent
+    return self.__intent
 end
+
+------------------------------------------------------------
 
 ---@param key string
 function Intent:clear(key)
+
     assert(type(key) == "string" and key ~= "",
         "[data.intent] key required")
 
-    self.__state.intent[key] = nil
+    self.__intent[key] = nil
 end
+
+------------------------------------------------------------
 
 ---@return table
 function Intent:inspect()
-    return self.__state.intent
+    return self.__intent
 end
+
+------------------------------------------------------------
+-- Preset Loading
+------------------------------------------------------------
 
 function Intent:load(name)
 
@@ -80,6 +93,8 @@ function Intent:load(name)
     return preset
 end
 
+------------------------------------------------------------
+
 function Intent:write(name, preset)
 
     assert(type(name) == "string" and name ~= "",
@@ -91,24 +106,28 @@ function Intent:write(name, preset)
     local path =
         Presets.write("intent", name, preset)
 
-    -- immediately register it in current state
-    self.__state.intent[name] = preset
+    -- register immediately
+    self.__intent[name] = preset
 
     return path
 end
+
+------------------------------------------------------------
 
 function Intent:save(name)
 
     assert(type(name) == "string" and name ~= "",
         "[data.intent] preset name required")
 
-    local intent = self.__state.intent[name]
+    local intent = self.__intent[name]
 
     assert(type(intent) == "table",
         "[data.intent] no intent found for key: " .. name)
 
     return Presets.write("intent", name, intent)
 end
+
+------------------------------------------------------------
 
 function Intent:pull_all()
 

@@ -1,10 +1,16 @@
--- system/app/data.lua
+-- system/app/facade/data.lua
 --
----@class AppDataSession
----@class AppDataVars
----@class AppDataInput
----@class AppDataResources
----@class AppDataRuntime
+-- Canonical application data container
+--
+-- app
+--  └ data
+--      ├ vars
+--      ├ inputs
+--      ├ resources
+--      ├ runtime
+--      ├ slots
+--      ├ intent
+--      └ ctx
 
 local Vars      = require("system.app.state.vars")
 local Input     = require("system.app.state.input")
@@ -15,39 +21,43 @@ local Slots     = require("system.app.state.slots")
 local Intent    = require("system.app.state.intent")
 local Context   = require("system.app.state.context")
 
----@class AppDataFacade
----@field private __app Surface
----@field private __state table
----@field private __vars AppDataVars|nil
----@field private __input AppDataInput|nil
----@field private __resources AppDataResources|nil
----@field private __runtime AppDataRuntime|nil
----@field private __session AppDataSession|nil
----@field private __slots AppDataSlots|nil
-local Data      = {}
-Data.__index    = Data
+local Data = {}
+Data.__index = Data
 
 ------------------------------------------------------------
--- Constructor
+-- Initial State
 ------------------------------------------------------------
----
+
 local function build_initial_state()
+
     return {
+
         vars = {},
-        slots = {},
-        intent = {},
-        inputs = { by_role = {} },
+
+        inputs = {
+            by_role = {}
+        },
+
         resources = {
             user   = {},
             system = {}
         },
+
         runtime = {
             user   = {},
-            system = {},
+            system = {}
         },
-        ------------------------------------------------
-        -- transient execution contexts
-        ------------------------------------------------
+
+        slots = {
+            config = {},
+            selection = {
+                user   = {},
+                system = {}
+            }
+        },
+
+        intent = {},
+
         ctx = {
             active = nil,
             store  = {}
@@ -55,24 +65,24 @@ local function build_initial_state()
     }
 end
 
----@param app Surface
----@return AppDataFacade
+------------------------------------------------------------
+-- Constructor
+------------------------------------------------------------
+
 function Data.new(app)
 
-    ---@type AppDataFacade
     local instance = setmetatable({
 
         __app       = app,
-
         __state     = build_initial_state(),
 
         __vars      = nil,
-        __slots     = nil,
-        __intent    = nil,
         __input     = nil,
         __resources = nil,
         __runtime   = nil,
         __session   = nil,
+        __slots     = nil,
+        __intent    = nil,
         __context   = nil,
 
     }, Data)
@@ -81,129 +91,9 @@ function Data.new(app)
 end
 
 ------------------------------------------------------------
--- Facade Accessors
+-- Vars
 ------------------------------------------------------------
 
----@return AppDataInput
-function Data:input()
-
-    if not self.__input then
-        self.__input = Input.new(self.__state)
-    end
-
-    return self.__input
-end
-
-
----@return AppDataResources
-function Data:resources()
-
-    if not self.__resources then
-
-        local function read_inputs()
-            local inputs = self.__state.inputs
-            return inputs and inputs.by_role or {}
-        end
-
-        self.__resources =
-            Resources.new(
-                self.__app,
-                self.__state.resources,
-                read_inputs
-            )
-
-        ------------------------------------------------------------
-        -- Initialize resource descriptors
-        ------------------------------------------------------------
-
-        self.__resources:pull_system()
-        self.__resources:pull_user_from_inputs()
-    end
-
-    return self.__resources
-end
-
----@return AppDataRuntime
-function Data:runtime()
-
-    if not self.__runtime then
-
-        local resources = self:resources()
-
-        local function read_resources()
-            return {
-                system = resources:system(),
-                user   = resources:user(),
-            }
-        end
-
-        ---@param scope "system"|"user"
-        ---@param role string
-        ---@param index integer
-        ---@return any
-        local function loader(scope, role, index)
-
-            local list = resources:get(scope, role)
-
-            list = assert(list,
-                "[data.runtime] missing resource list: "
-                .. tostring(scope) .. "." .. tostring(role))
-
-            local entry = list[index]
-
-            entry = assert(entry,
-                "[data.runtime] missing resource entry: "
-                .. tostring(scope) .. "." .. tostring(role)
-                .. "[" .. tostring(index) .. "]")
-
-            return resources:load_entry(entry)
-        end
-
-        ---@param scope "system"|"user"
-        ---@param role string
-        ---@param id string
-        ---@return integer|nil
-        local function resolve_index(scope, role, id)
-
-            local list = resources:get(scope, role)
-
-            if not list then
-                return nil
-            end
-
-            for i = 1, #list do
-                if list[i].id == id then
-                    return i
-                end
-            end
-
-            return nil
-        end
-
-        self.__runtime =
-            RuntimeNS.new(
-                self.__state,
-                loader,
-                resolve_index,
-                read_resources
-            )
-    end
-
-    return self.__runtime
-end
-
----@return AppDataSession
-function Data:session()
-
-    if not self.__session then
-        self.__session = Session.new(self.__state.vars)
-    end
-
-    return self.__session
-end
-
-
----@return AppDataVars
 function Data:vars()
 
     if not self.__vars then
@@ -213,14 +103,66 @@ function Data:vars()
     return self.__vars
 end
 
+------------------------------------------------------------
+-- Inputs
+------------------------------------------------------------
 
----@return table
-function Data:state()
-    return self.__state
+function Data:input()
+
+    if not self.__input then
+        self.__input = Input.new(self.__state.inputs)
+    end
+
+    return self.__input
 end
 
+------------------------------------------------------------
+-- Resources
+------------------------------------------------------------
 
----@return AppDataSlots
+function Data:resources()
+
+    if not self.__resources then
+
+        local function read_inputs()
+            return self.__state.inputs.by_role
+        end
+
+        self.__resources =
+            Resources.new(
+                self.__app,
+                self.__state.resources,
+                read_inputs
+            )
+
+        self.__resources:pull_system()
+        self.__resources:pull_user_from_inputs()
+    end
+
+    return self.__resources
+end
+
+------------------------------------------------------------
+-- Runtime
+------------------------------------------------------------
+
+function Data:runtime()
+
+    if not self.__runtime then
+        self.__runtime =
+            RuntimeNS.new(
+                self.__state.runtime,
+                self:resources()
+            )
+    end
+
+    return self.__runtime
+end
+
+------------------------------------------------------------
+-- Slots
+------------------------------------------------------------
+
 function Data:slots()
 
     if not self.__slots then
@@ -230,8 +172,10 @@ function Data:slots()
     return self.__slots
 end
 
+------------------------------------------------------------
+-- Intent
+------------------------------------------------------------
 
----@return AppDataIntent
 function Data:intent()
 
     if not self.__intent then
@@ -241,49 +185,10 @@ function Data:intent()
     return self.__intent
 end
 
-
----Submit external input into system and promote to resources.
----@param role string
----@param payload table
----@return table
-function Data:submit(role, payload)
-
-    local descriptor =
-        self:input():set(role, payload)
-
-    local result =
-        self:resources():pull_user_from_inputs()
-
-    return {
-        ok = true,
-        role = role,
-        input = descriptor,
-        resource_status = result.status
-    }
-end
-
-
 ------------------------------------------------------------
--- Inspection
+-- Context
 ------------------------------------------------------------
 
----@return table
-function Data:inspect()
-
-    return {
-        vars      = self.__state.vars,
-        intent    = self.__state.intent,
-        inputs    = self.__state.inputs.by_role,
-        resources = self.__state.resources,
-        runtime   = self.__state.runtime,
-        slots     = self.__state.slots,
-        ctx       = self.__state.ctx
-    }
-
-end
-
-
----@return AppDataContext
 function Data:context()
 
     if not self.__context then
@@ -291,6 +196,68 @@ function Data:context()
     end
 
     return self.__context
+end
+
+------------------------------------------------------------
+-- Session
+------------------------------------------------------------
+
+function Data:session()
+
+    if not self.__session then
+        self.__session = Session.new(self.__state.vars)
+    end
+
+    return self.__session
+end
+
+------------------------------------------------------------
+-- Submit Inputs
+------------------------------------------------------------
+
+function Data:submit(role, payload)
+
+    local input_descriptor =
+        self:input():set(role, payload)
+
+    local resource_status =
+        self:resources():pull_user_from_inputs()
+
+    if self.__runtime then
+        self.__runtime:clear_role("user", role)
+    end
+
+    return {
+        ok = true,
+        role = role,
+        input = input_descriptor,
+        resource_status = resource_status.status
+    }
+end
+
+------------------------------------------------------------
+-- Raw State Access
+------------------------------------------------------------
+
+function Data:state()
+    return self.__state
+end
+
+------------------------------------------------------------
+-- Clean Inspection
+------------------------------------------------------------
+
+function Data:inspect()
+
+    return {
+        vars      = self.__state.vars,
+        inputs    = self.__state.inputs.by_role,
+        resources = self.__state.resources,
+        runtime   = self.__state.runtime,
+        slots     = self.__state.slots,
+        intent    = self.__state.intent,
+        ctx       = self.__state.ctx
+    }
 end
 
 return Data
