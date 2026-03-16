@@ -181,5 +181,72 @@ function Context:ea_to_batch(ea_price)
     return PriceConvert.ea_to_batch(ea_price, self.ct)
 end
 
+------------------------------------------------
+-- canonical price resolution
+------------------------------------------------
+
+---Resolve canonical board-foot price for a board.
+---
+---Rules:
+---  • bf_price is canonical
+---  • ea_price converts using bf()
+---  • lf_price converts using bf_per_lf()
+---
+---@param board table
+---@return number|nil
+------------------------------------------------
+-- canonical price resolution
+------------------------------------------------
+
+---Resolve canonical board-foot price for the bound board.
+---
+---Rules:
+---  • bf_price is canonical
+---  • ea_price converts using bf()
+---  • lf_price converts using bf_per_lf()
+---
+---@param board table
+---@return number|nil
+function Context:resolve_bf_price(board)
+
+    board = board or self
+
+    assert(type(board) == "table",
+        "Context:resolve_bf_price(): board table required")
+
+    ------------------------------------------------
+    -- canonical
+    ------------------------------------------------
+
+    if type(board.bf_price) == "number"
+    and board.bf_price > 0 then
+        return board.bf_price
+    end
+
+    ------------------------------------------------
+    -- derive from each price
+    ------------------------------------------------
+
+    if type(board.ea_price) == "number"
+    and board.ea_price > 0 then
+        return self:ea_to_bf(board.ea_price)
+    end
+
+    ------------------------------------------------
+    -- derive from linear foot
+    ------------------------------------------------
+
+    if type(board.lf_price) == "number"
+    and board.lf_price > 0 then
+        return self:lf_to_bf(board.lf_price)
+    end
+
+    ------------------------------------------------
+    -- no price available
+    ------------------------------------------------
+
+    return nil
+end
+
 
 return Context
