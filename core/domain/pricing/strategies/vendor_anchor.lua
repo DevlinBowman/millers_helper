@@ -13,19 +13,19 @@ local function safe_number(x, default)
     return default
 end
 
+local Formula = require("core.formula")
+
 local function extract_vendor_price(board)
-    if type(board.bf_price) == "number" then
-        return board.bf_price
-    end
 
-    if type(board.ea_price) == "number"
-        and type(board.bf_ea) == "number"
-        and board.bf_ea > 0
-    then
-        return board.ea_price / board.bf_ea
-    end
+    local f = Formula.board(board)
 
-    return nil
+    local bf_price =
+        f:resolve_bf_price(board)
+
+    assert(type(bf_price) == "number",
+        "[pricing.vendor_anchor] vendor board missing price")
+
+    return bf_price
 end
 
 function VendorAnchor.run(env)

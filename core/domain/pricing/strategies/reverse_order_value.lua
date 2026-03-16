@@ -54,11 +54,18 @@ function ReverseOrderValue.run(env)
         "[pricing.reverse_order_value] target order value required")
 
     ------------------------------------------------
-    -- compute total bf
+    -- grade weighting
     ------------------------------------------------
 
-    local total_bf = 0
+    local Grade =
+        require("core.model.board_equivalence.grade")
+
+    ------------------------------------------------
+    -- build rows
+    ------------------------------------------------
+
     local rows = {}
+    local total_weight = 0
 
     for i, board in ipairs(boards) do
 
@@ -70,23 +77,36 @@ function ReverseOrderValue.run(env)
         local ct = board.ct or 1
         local bf_batch = bf_ea * ct
 
-        total_bf = total_bf + bf_batch
+        ------------------------------------------------
+        -- grade weight
+        ------------------------------------------------
+
+        local rank = Grade.rank(board.grade) or 1
+
+        ------------------------------------------------
+        -- board weight
+        ------------------------------------------------
+
+        local board_weight = bf_batch * rank
 
         rows[i] = {
             board = board,
-            bf_batch = bf_batch
+            bf_batch = bf_batch,
+            weight = board_weight
         }
+
+        total_weight = total_weight + board_weight
     end
 
-    assert(total_bf > 0,
-        "[pricing.reverse_order_value] total board feet must be > 0")
+    assert(total_weight > 0,
+        "[pricing.reverse_order_value] total weight must be > 0")
 
     ------------------------------------------------
-    -- compute base price
+    -- normalization factor
     ------------------------------------------------
 
-    local base_price =
-        target_total_value / total_bf
+    local value_per_weight =
+        target_total_value / total_weight
 
     ------------------------------------------------
     -- build result
@@ -96,7 +116,11 @@ function ReverseOrderValue.run(env)
 
     for i, row in ipairs(rows) do
 
-        local bf_price = base_price
+        local board_value =
+            row.weight * value_per_weight
+
+        local bf_price =
+            board_value / row.bf_batch
 
         per_board[i] = {
             label = row.board.label,
@@ -114,8 +138,8 @@ function ReverseOrderValue.run(env)
 
         meta = {
             target_total_value = target_total_value,
-            total_bf           = total_bf,
-            base_price         = base_price,
+            total_weight       = total_weight,
+            value_per_weight   = value_per_weight,
         },
 
         opts = env.opts or {},
