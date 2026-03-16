@@ -21,6 +21,15 @@ local Slots     = require("system.app.state.slots")
 local Intent    = require("system.app.state.intent")
 local Context   = require("system.app.state.context")
 
+---@class AppDataFacade
+---@field vars fun(self:AppDataFacade):AppDataVars
+---@field input fun(self:AppDataFacade):AppDataInput
+---@field resources fun(self:AppDataFacade):AppDataResources
+---@field runtime fun(self:AppDataFacade):AppDataRuntime
+---@field slots fun(self:AppDataFacade):AppDataSlots
+---@field intent fun(self:AppDataFacade):AppDataIntent
+---@field context fun(self:AppDataFacade):AppDataContext
+---@field session fun(self:AppDataFacade):AppDataSession
 local Data = {}
 Data.__index = Data
 

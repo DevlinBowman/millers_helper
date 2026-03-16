@@ -88,7 +88,7 @@ end
 
 ---Return merged schema + filesystem reality graph.
 ---@return table
-function Surface:inspect_graph()
+function Surface:inspect_fs_graph()
     local fs_map = AppFS.inspect_fs()
     local graph = {}
 
