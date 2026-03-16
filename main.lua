@@ -1,25 +1,12 @@
-local I       = require("inspector")
-local Backend = require("system.backend")
-local Runtime = require('core.domain.runtime').controller
+local I        = require("inspector")
+local Backend  = require("system.backend")
+local Executor = require("system.execution.controller")
 
-local app     = Backend.run("default")
+local app = Backend.run("default")
 
 ------------------------------------------------------------
--- Inputs (descriptors only)
+-- Register Resources
 ------------------------------------------------------------
-
-
-
-
--- app:data():submit("job", {
---     boards_path = "/Users/ven/Desktop/2026-lumber-app-v3/data/test_inputs/nat_ret.txt",
---     order_path  = "/Users/ven/Desktop/2026-lumber-app-v3/data/test_inputs/no_boards.txt"
--- })
---
--- app:data():submit("job", {
---     boards_path = "/Users/ven/Desktop/2026-lumber-app-v3/data/test_inputs/nat_more.txt",
---     order_path  = "/Users/ven/Desktop/2026-lumber-app-v3/data/test_inputs/no_boards.txt"
--- })
 
 app:data():submit("vendor", {
     name = "ace_hardware",
@@ -29,90 +16,87 @@ app:data():submit("vendor", {
 app:data():submit("job", {
     path = "/Users/ven/Desktop/2026-lumber-app-v3/data/test_inputs/compiled_lumber_orders.csv",
 })
--- app:data():slots():set_selection("user", "job", 12)
---
---
-I.print(app:data():intent():inspect())
--- app:services():vendor():run()
 
 ------------------------------------------------------------
--- Load runtime batches
+-- Slot Selection
+------------------------------------------------------------
+
+-- select job batch
+app:data():slots():set_selection("user","job",{ batch = 3})
+app:data():slots():set_selection("user","job:pricing",{ batch = 1, board = 2})
+app:data():slots():set_selection("user","job:quote",{ batch = 1, board = 2})
+-- select vendor batch
+-- app:data():slots():set_selection("system", "vendor", 3)
+-- app:data():slots():set_selection("system","vendor:compare",1)
+app:data():slots():set_selection("system","vendor:pricing",{ batch = 1 })
+
+-- app:data():slots():clear_selection('system', 'vendor')
+app:data():slots():clear_selection('user', 'job:quote')
+
+------------------------------------------------------------
+-- Load Runtime Batches
 ------------------------------------------------------------
 
 app:data():runtime():pull("system", "vendor")
 app:data():runtime():pull("user", "job")
 
-local job_batches = app:data():runtime():batches("user", "job")
-local batch = job_batches[1]
--- I.print(batch)
-
-local vendor_batches = app:data():runtime():batches("system", "vendor")
-local vendor = vendor_batches[1]
--- I.print(vendor_batches[2])
---
-
-
+-- local batch_val = app:data():runtime():require("user", "job"):batch().order.value
+-- I.print(batch_val)
+-- I.print(app:data():inspect(), {ignore_keys = {'__batches'}})
 ------------------------------------------------------------
--- Intent configuration
+-- Intent Configuration
 ------------------------------------------------------------
 
 app:data():intent():set("pricing", {
     basis = "vendor_anchor",
-    vendor = {
-        kind  = "vendor",
-        items = vendor.boards,
-        meta  = { name = vendor.id }
-    },
-    percentage = 10
+    -- vendor = {
+    --     scope = "system",
+    --     role  = "vendor"
+    -- },
+    percentage = 15
 })
+I.print(app:data():slots():resolve("user", "job"))
 I.print(app:data():intent():inspect())
-
-------------------------------------------------------------
--- Enrichment (derive missing capabilities such as pricing)
-------------------------------------------------------------
-
-local Runner = require("system.app.services.enrichment_runner")
-
--- local enrichment_result = Runner.run(
---     "batch",
---     batch,
---     app:data():intent():all()
--- )
+-- app:data():intent():clear('pricing')
+-- I.print(app:data(), {ignore_keys= '__batches'})
 
 
 ------------------------------------------------------------
--- Additional vendor (optional)
+-- Baseline Quote (Full Execution)
 ------------------------------------------------------------
 
--- app:data():submit("vendor", {
---     name = "ace hardware",
---     path = "/Users/ven/Desktop/2026-lumber-app-v3/data/ref/retailer_lumber/ace_ben_lomond.txt"
--- })
+print("\n--- Executor Quote (full system path) ---")
+
+local exec_quote = Executor.run(app, "quote")
+I.print(exec_quote)
+
+exec_quote:print()
 
 ------------------------------------------------------------
--- Services
+-- Compare (Triggers Enrichment + Pricing)
 ------------------------------------------------------------
 
--- app:services():vendor():run()
-app:services():quote():run():print()
--- app:services():invoice():run():print()
+print("\n--- Compare Execution ---")
+
+local compare_result = Executor.run(app, "compare", { force = true })
+-- --
+compare_result:print()
 
 ------------------------------------------------------------
--- Compare (now runtime should contain derived prices)
+-- Quote After Pricing (Executor Path)
 ------------------------------------------------------------
 
-local result = app:services():compare():run()
-
-if result and result.print then
-    result:print()
-else
-    print("COMPARE FAILED")
-    require("inspector").print(result)
-end
+print("\n--- Quote After Pricing (executor) ---")
 
 
-app:services():quote():run():print()
+-- Executor.run(app, "pricing")
+Executor.run(app, "quote"):print()
 
--- app:data():intent():save('pricing')
-app:data():intent():load('pricing')
-I.print(app:data():intent():inspect())
+------------------------------------------------------------
+-- Inspect Application State
+------------------------------------------------------------
+
+-- I.print(app, {ignore_keys = {'batch', '__batches'}})
+--
+-- I.print(app:data():runtime():require('system','vendor'))
+--
